@@ -1,6 +1,6 @@
 //!Global variables and functions
 
-use reqwest::{blocking::Client, header};
+use reqwest::{Client, header};
 use once_cell::sync::Lazy;
 
 pub const APP_NAME: &str = "Senget";
