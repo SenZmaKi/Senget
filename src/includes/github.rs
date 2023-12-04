@@ -1,93 +1,18 @@
 //! Module for interacting with the Github api
-use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use regex;
-use reqwest::{self, Request};
 use serde_json;
-use std::{
-    collections::HashMap,
-    fmt::format,
-    fs::File,
-    io::{self, Write},
-    path::PathBuf,
-};
-use tokio::io::AsyncWriteExt;
+use std::collections::HashMap;
 
-use super::globals::CLIENT;
+use super::package_manager::Installer;
 
 const GITHUB_HOME_URL: &str = "https://github.com";
 const GITHUB_API_ENTRY_POINT: &str = "https://api.github.com";
-
 lazy_static! {
     static ref VERSION_REGEX: regex::Regex = regex::Regex::new(r"(\d+(\.\d+)*)").unwrap();
 }
-
 #[derive(Debug)]
-pub enum RequestOrIOError {
-    IOError(io::Error),
-    ReqwestError(reqwest::Error),
-}
-
-impl From<io::Error> for RequestOrIOError {
-    fn from(error: io::Error) -> Self {
-        RequestOrIOError::IOError(error)
-    }
-}
-
-impl From<reqwest::Error> for RequestOrIOError {
-    fn from(error: reqwest::Error) -> Self {
-        RequestOrIOError::ReqwestError(error)
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct Release {
-    title: String,
-    file_title: String,
-    file_extension: String,
-    url: String,
-    version: String,
-}
-impl Release {
-    pub fn from(title: &str, file_extension: &str, url: &str, version: &str) -> Release {
-        let file_title = format!("{}-installer.{}", title, file_extension);
-        Release {
-            title: title.to_owned(),
-            file_title: file_title,
-            file_extension: file_extension.to_owned(),
-            url: url.to_owned(),
-            version: version.to_owned(),
-        }
-    }
-    pub async fn download(
-        &self,
-        path: &PathBuf,
-        client: &reqwest::Client,
-    ) -> Result<(), RequestOrIOError> {
-        let path = path.join(&self.file_title);
-        let mut file = tokio::fs::File::create(path).await?;
-        let mut response = client.get(&self.url).send().await?;
-        let progress_bar = ProgressBar::new(response.content_length().unwrap());
-        progress_bar.set_style(
-            ProgressStyle::default_bar()
-                .template("{msg} {wide_bar} {bytes}/{total_bytes} ({eta} left)")
-                .unwrap(),
-        );
-        let mut progress = 0;
-        progress_bar.set_position(progress);
-        progress_bar.set_message(format!("Downloading {}", self.title));
-        while let Some(chunk) = response.chunk().await? {
-            file.write_all(&chunk).await?;
-            progress += chunk.len() as u64;
-            progress_bar.set_position(progress);
-        }
-        progress_bar.finish_with_message("Download complete");
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub struct Repo {
+struct Repo {
     title: String,
     url: String,
     name: String, // For example if the url is https://github.com/SenZmaKi/Senpwai the name is SenZmaKi/Senpwai
@@ -109,14 +34,15 @@ impl Repo {
         }
     }
 
-    async fn fetch_asset_url_by_version(
+    async fn get_assets_url_by_version(
         &self,
-        mut version: &str,
+        version: &str,
         client: &reqwest::Client,
     ) -> Result<Option<(String, String)>, reqwest::Error> {
         let url = self.generate_endpoint("releases");
         let response = client.get(url).send().await?;
-        let releases: Vec<HashMap<String, serde_json::Value>> = response.json().await.unwrap();
+        let releases: Vec<HashMap<String, serde_json::Value>> = response.json().await?;
+        let mut version = version;
         if releases == [] {
             Ok(None)
         } else {
@@ -133,19 +59,19 @@ impl Repo {
                         Some(v) => v,
                     };
                 if (version == curr_ver) || (version == "latest") {
-                    let asset_url = r.get("assets_url").unwrap().as_str().unwrap().to_owned();
-                    return Ok(Some((asset_url, curr_ver.to_owned())));
+                    let assets_url = r.get("assets_url").unwrap().as_str().unwrap().to_owned();
+                    return Ok(Some((assets_url, curr_ver.to_owned())));
                 }
             }
             return Ok(None);
         }
     }
 
-    fn parse_for_windows_asset(
+    fn parse_for_windows_installer(
         &self,
         assets: Vec<HashMap<String, serde_json::Value>>,
         version: &str,
-    ) -> Option<Release> {
+    ) -> Option<Installer> {
         let mut file_extension = "".to_owned();
         let mut url = "".to_owned();
         for asset in assets {
@@ -165,29 +91,29 @@ impl Repo {
         if url == "" {
             return None;
         }
-        Some(Release::from(&self.title, &file_extension, &url, version))
+        Some(Installer::from(&self.title, &file_extension, &url, version))
     }
-    pub async fn fetch_release(
+    pub async fn get_installer(
         &self,
         client: &reqwest::Client,
         version: &str,
-    ) -> Result<Option<Release>, reqwest::Error> {
-        let (latest_assets_url, version) =
-            match self.fetch_asset_url_by_version(version, client).await? {
+    ) -> Result<Option<Installer>, reqwest::Error> {
+        let (target_assets_url, version) =
+            match self.get_assets_url_by_version(version, client).await? {
                 None => return Ok(None),
                 Some(a) => a,
             };
-        let response = client.get(latest_assets_url).send().await?;
+        let response = client.get(target_assets_url).send().await?;
         let json = response.json::<Vec<HashMap<String, serde_json::Value>>>();
-        let releases = json.await?;
-        let rel = self.parse_for_windows_asset(releases, &version);
+        let assets = json.await?;
+        let rel = self.parse_for_windows_installer(assets, &version);
         Ok(rel)
     }
-    pub async fn fetch_latest_release(
+    pub async fn get_latest_installer(
         &self,
         client: &reqwest::Client,
-    ) -> Result<Option<Release>, reqwest::Error> {
-        self.fetch_release(client, "latest").await
+    ) -> Result<Option<Installer>, reqwest::Error> {
+        self.get_installer(client, "latest").await
     }
     fn generate_endpoint(&self, resource: &str) -> String {
         format!(
@@ -204,7 +130,7 @@ impl Repo {
 pub async fn search(query: &str, client: &reqwest::Client) -> Result<Vec<Repo>, reqwest::Error> {
     let url = format!("{GITHUB_API_ENTRY_POINT}/search/repositories?q={query}&per_page=10");
     let response = client.get(url).send().await?;
-    let json: HashMap<String, serde_json::Value> = response.json().await.unwrap();
+    let json: HashMap<String, serde_json::Value> = response.json().await?;
     let items = json.get("items").unwrap().as_array().unwrap();
     let mut results = Vec::with_capacity(items.len());
     for item in items {
@@ -225,10 +151,8 @@ pub async fn search(query: &str, client: &reqwest::Client) -> Result<Vec<Repo>, 
 #[cfg(test)]
 mod tests {
 
-    use std::path::PathBuf;
-
-    use super::{lazy_static, search, Release, Repo};
-    use crate::globals::CLIENT;
+    use super::{lazy_static, search, Repo};
+    use crate::utils::CLIENT;
     lazy_static! {
         static ref REPOS: Vec<Repo> = vec![
             Repo::from(
@@ -265,7 +189,7 @@ mod tests {
         let mut results = Vec::new();
         for (idx, query) in queries.iter().enumerate() {
             println!("\nResults of Search {}\n", idx + 1);
-            let res = search(query, &CLIENT).await.unwrap();
+            let res = search(query, &CLIENT).await.expect("Succesful search");
             for r in res.iter() {
                 println!("{:?}", r)
             }
@@ -276,28 +200,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fetching_release() {
-        println!("\nResults for release fetching\n");
-        let rel = SENPWAI.fetch_release(&CLIENT, "2.0.7").await.unwrap();
-        let rel = rel.to_owned().unwrap();
+    async fn test_getting_installer() {
+        let rel = SENPWAI
+            .get_installer(&CLIENT, "2.0.7")
+            .await
+            .expect("Successfully get installer");
+        let installer = rel.expect("Installer to be Some");
         assert_eq!(
-            rel.url,
+            installer.url,
             "https://github.com/SenZmaKi/Senpwai/releases/download/v2.0.7/Senpwai-setup.exe"
         );
-        assert_eq!(rel.version, "2.0.7");
-        println!("{:?}", rel);
-    }
-    #[tokio::test]
-    async fn test_downloading_release() {
-        let rel = Release::from(
-            "Senpwai",
-            "exe",
-            "https://github.com/SenZmaKi/Senpwai/releases/download/v2.0.7/Senpwai-setup.exe",
-            "2.0.7",
-        );
-        let path = PathBuf::from("packages").canonicalize().unwrap();
-        let _ = rel.download(&path, &CLIENT).await.unwrap();
-        let f_path = path.join(rel.file_title);
-        assert!(f_path.is_file());
+        assert_eq!(installer.version, "2.0.7");
+        println!("\nResults getting installer\n");
+        println!("{:?}", installer);
     }
 }
