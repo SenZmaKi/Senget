@@ -52,21 +52,21 @@ impl From<reqwest::Error> for RequestOrIOError {
 
 #[derive(Debug, Default, Clone)]
 pub struct Installer {
-    package_title: String,
+    package_name: String,
     file_title: String,
     file_extension: String,
     pub url: String,
     pub version: String,
 }
 impl Installer {
-    pub fn from(package_title: &str, file_extension: &str, url: &str, version: &str) -> Installer {
-        let file_title = format!("{}-Installer.{}", package_title, file_extension);
+    pub fn new(package_name: String, file_extension: String, url: String, version: String) -> Installer {
+        let file_title = format!("{}-Installer.{}", package_name, file_extension);
         Installer {
-            package_title: package_title.to_owned(),
-            file_title: file_title,
-            file_extension: file_extension.to_owned(),
-            url: url.to_owned(),
-            version: version.to_owned(),
+            package_name,
+            file_title,
+            file_extension,
+            url,
+            version,
         }
     }
     pub async fn download(
@@ -85,7 +85,7 @@ impl Installer {
         );
         let mut progress = 0;
         progress_bar.set_position(progress);
-        progress_bar.set_message(format!("Downloading {}", self.package_title));
+        progress_bar.set_message(format!("Downloading {} v{}", self.package_name, self.version));
         while let Some(chunk) = response.chunk().await? {
             file.write_all(&chunk).await?;
             progress += chunk.len() as u64;
@@ -134,7 +134,7 @@ impl Installer {
     }
 
     fn statically_generate_package_shortcut(&self) -> Option<PathBuf> {
-        let shortcut_path = START_MENU_FOLDER.join(format!("{}.lnk", self.package_title));
+        let shortcut_path = START_MENU_FOLDER.join(format!("{}.lnk", self.package_name));
         if shortcut_path.is_file() {
             Some(shortcut_path)
         } else {
@@ -188,8 +188,8 @@ impl Installer {
     }
 
     fn fetch_uninstall_command(
-        user_reg_keys_before: HashSet<String>,
-        machine_reg_keys_before: HashSet<String>,
+        user_reg_keys_before: &HashSet<String>,
+        machine_reg_keys_before: &HashSet<String>,
     ) -> Result<Option<String>, IOError> {
         let user_reg_keys_after = Installer::fetch_reg_keys(&UNINSTALL_REG_KEY_USER)?;
         let mut uninstall_command = Installer::fetch_uninstall_command_for_key(
@@ -208,10 +208,10 @@ impl Installer {
         Ok(uninstall_command)
     }
 
-    pub fn install(&self, file_path: &PathBuf) -> Result<InstallInfo, IOError> {
-        let mut load_anim =
-            LoadingAnimation::new(&format!("Installing {}.. .", self.package_title));
-        load_anim.start();
+    pub fn install(&self, file_path: &PathBuf,) -> Result<InstallInfo, IOError> {
+        let mut loading_animation =
+            LoadingAnimation::new(&format!("Installing {} v{}.. .", self.package_name, self.version));
+        loading_animation.start();
         let user_reg_keys_before = Installer::fetch_reg_keys(&UNINSTALL_REG_KEY_USER)?;
         let machine_reg_keys_before = Installer::fetch_reg_keys(&UNINSTALL_REG_KEY_MACHINE)?;
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
@@ -219,35 +219,35 @@ impl Installer {
 
         Installer::run_installation(file_path)?;
 
-        let main_executable = self
+        let executable_path = self
             .statically_generate_package_shortcut()
             .or_else(|| Installer::dynamically_find_package_shortcut(&shortcut_files_before))
             .and_then(|path| Installer::find_shorcut_target(&path));
 
         let uninstall_command =
-            Installer::fetch_uninstall_command(user_reg_keys_before, machine_reg_keys_before)?;
+            Installer::fetch_uninstall_command(&user_reg_keys_before, &machine_reg_keys_before)?;
 
-        load_anim.stop();
+        loading_animation.stop();
         Ok(InstallInfo {
-            main_executable,
+            executable_path,
             uninstall_command,
         })
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InstallInfo {
-    main_executable: Option<PathBuf>,
-    uninstall_command: Option<String>,
+    pub executable_path: Option<PathBuf>,
+    pub uninstall_command: Option<String>,
 }
 mod tests {
     use super::{lazy_static, Installer, PathBuf, CLIENT};
     lazy_static! {
-        static ref INSTALLER: Installer = Installer::from(
-            "Senpwai",
-            "exe",
-            "https://github.com/SenZmaKi/Senpwai/releases/download/v2.0.7/Senpwai-setup.exe",
-            "2.0.7",
+        static ref INSTALLER: Installer = Installer::new(
+            "Senpwai".to_owned(),
+            "exe".to_owned(),
+            "https://github.com/SenZmaKi/Senpwai/releases/download/v2.0.7/Senpwai-setup.exe".to_owned(),
+            "2.0.7".to_owned(),
         );
         static ref PACKAGE_INSTALLER_DIR: PathBuf =
             PathBuf::from("Package-Installers").canonicalize().unwrap();
@@ -268,8 +268,8 @@ mod tests {
         println!("Results for test installation\n {:?}", install_locations);
 
         assert!(install_locations
-            .main_executable
-            .expect("Main Executable to be Some")
+            .executable_path
+            .expect("Executable path to be Some")
             .is_file());
         assert!(install_locations.uninstall_command.is_some());
     }

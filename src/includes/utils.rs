@@ -46,7 +46,7 @@ impl LoadingAnimation {
             while !*guard {
                 guard = cvar.wait(guard).unwrap();
             }
-            spinner.stop();
+            spinner.stop_and_persist("✔", "Finished".to_owned());
         });
         self.join_handle = Some(jh);
     }
