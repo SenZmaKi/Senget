@@ -1,4 +1,4 @@
 pub mod github;
 pub mod utils;
-pub mod package_manager;
+pub mod install;
 pub mod some_shit;

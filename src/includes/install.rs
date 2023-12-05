@@ -8,10 +8,10 @@ use winreg::{
     RegKey,
 };
 
-use super::utils::CLIENT;
+use super::utils::{LoadingAnimation, CLIENT};
 
 const SILENT_INSTALL_ARGS: [&str; 3] = [
-    "/silent", // Inno Setup
+    "/VERYSILENT", // Inno Setup
     "/qn",     // MSI
     "/S",      // NSIS
 ];
@@ -60,7 +60,7 @@ pub struct Installer {
 }
 impl Installer {
     pub fn from(package_title: &str, file_extension: &str, url: &str, version: &str) -> Installer {
-        let file_title = format!("{}-installer.{}", package_title, file_extension);
+        let file_title = format!("{}-Installer.{}", package_title, file_extension);
         Installer {
             package_title: package_title.to_owned(),
             file_title: file_title,
@@ -209,6 +209,9 @@ impl Installer {
     }
 
     pub fn install(&self, file_path: &PathBuf) -> Result<InstallInfo, IOError> {
+        let mut load_anim =
+            LoadingAnimation::new(&format!("Installing {}.. .", self.package_title));
+        load_anim.start();
         let user_reg_keys_before = Installer::fetch_reg_keys(&UNINSTALL_REG_KEY_USER)?;
         let machine_reg_keys_before = Installer::fetch_reg_keys(&UNINSTALL_REG_KEY_MACHINE)?;
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
@@ -224,6 +227,7 @@ impl Installer {
         let uninstall_command =
             Installer::fetch_uninstall_command(user_reg_keys_before, machine_reg_keys_before)?;
 
+        load_anim.stop();
         Ok(InstallInfo {
             main_executable,
             uninstall_command,
@@ -259,8 +263,8 @@ mod tests {
 
     #[test]
     fn test_installation() {
-        let path = PACKAGE_INSTALLER_DIR.join("Senpwai-installer.exe");
-        let install_locations = INSTALLER.install(&path).expect("Succesful Installation");
+        let path = PACKAGE_INSTALLER_DIR.join("Senpwai-Installer.exe");
+        let install_locations = INSTALLER.install(&path).expect("Successful Installation");
         println!("Results for test installation\n {:?}", install_locations);
 
         assert!(install_locations

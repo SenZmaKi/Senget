@@ -1,5 +1,5 @@
 mod includes;
-use includes::{github, utils, package_manager};
+use includes::{github, utils, install};
 
 
 fn main() {

@@ -4,7 +4,7 @@ use regex;
 use serde_json;
 use std::collections::HashMap;
 
-use super::package_manager::Installer;
+use super::install::Installer;
 
 const GITHUB_HOME_URL: &str = "https://github.com";
 const GITHUB_API_ENTRY_POINT: &str = "https://api.github.com";
