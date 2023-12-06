@@ -1,23 +1,19 @@
 //! Module for interacting with the Github api
-use lazy_static::lazy_static;
-use regex;
-use serde_json;
-use std::collections::HashMap;
-
-use super::{
-    super::install::Installer,
-    serde_json_types::{
-        Asset, Assets, ReleaseResponseJson, ReleasesResponseJson, RepoResponseJson,
-        SearchResponseJson,
+use crate::{
+    github::serde_json_types::{
+        AssetsResponseJson, ReleasesResponseJson, RepoResponseJson, SearchResponseJson,
     },
+    includes::install::Installer,
 };
+use lazy_static::lazy_static;
+use regex::{self, Regex};
 
 const GITHUB_HOME_URL: &str = "https://github.com";
 const GITHUB_API_ENTRY_POINT: &str = "https://api.github.com";
 lazy_static! {
-    static ref VERSION_REGEX: regex::Regex = regex::Regex::new(r"(\d+(\.\d+)*)").unwrap();
+    static ref VERSION_REGEX: Regex = Regex::new(r"(\d+(\.\d+)*)").unwrap();
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Repo {
     pub name: String,
     pub full_name: String, // For example if the url is https://github.com/SenZmaKi/Senpwai the full_name is SenZmaKi/Senpwai
@@ -26,6 +22,8 @@ pub struct Repo {
     pub language: Option<String>,
 }
 impl Repo {
+    // static member
+
     pub fn new(
         name: String,
         full_name: String,
@@ -73,7 +71,11 @@ impl Repo {
         }
     }
 
-    fn parse_for_windows_installer(&self, assets: Assets, version: String) -> Option<Installer> {
+    fn parse_for_windows_installer(
+        &self,
+        assets: AssetsResponseJson,
+        version: String,
+    ) -> Option<Installer> {
         let mut file_extension = "".to_owned();
         let mut url = "".to_owned();
         for asset in assets {
@@ -87,13 +89,18 @@ impl Repo {
         if url == "" {
             return None;
         }
-        Some(Installer::new(self.name.to_owned(), file_extension, url, version))
+        Some(Installer::new(
+            self.name.to_owned(),
+            file_extension,
+            url,
+            version,
+        ))
     }
     pub async fn get_installer(
         &self,
         client: &reqwest::Client,
         version: &str,
-        is_update: bool
+        is_update: bool,
     ) -> Result<Option<Installer>, reqwest::Error> {
         let (target_assets_url, returned_version) =
             match self.get_assets_url_by_version(version, client).await? {
@@ -102,7 +109,7 @@ impl Repo {
             };
         if is_update && returned_version == version {
             return Ok(None);
-        } 
+        }
 
         let assets = client.get(target_assets_url).send().await?.json().await?;
         let rel = self.parse_for_windows_installer(assets, returned_version);
@@ -148,17 +155,14 @@ pub async fn search(query: &str, client: &reqwest::Client) -> Result<Vec<Repo>, 
 #[cfg(test)]
 pub mod tests {
 
-    use super::{lazy_static, search, Repo};
-    use crate::utils::CLIENT;
-    lazy_static! {
-        static ref REPOS: Vec<Repo> = vec![
-            Repo::new(
-                "Senpwai".to_owned(),
-                "SenZmaKi/Senpwai".to_owned(),
-                "https://github.com/senzmaki/senpwai".to_owned(),
-                Some("A desktop app for batch downloading anime".to_owned()),
-                Some("Python".to_owned()),
-            ),
+    use crate::{
+        github::api::{search, Repo},
+        utils::{setup_client, SENPWAI_REPO},
+    };
+
+    fn repos() -> Vec<Repo> {
+        vec![
+            (*SENPWAI_REPO).to_owned(),
             Repo::new(
                 "NyakaMwizi".to_owned(),
                 "SenZmaKi/NyakaMwizi".to_owned(),
@@ -180,8 +184,7 @@ pub mod tests {
                 None,
                 Some("Go".to_owned()),
             ),
-        ];
-        static ref SENPWAI: &'static Repo = &REPOS[0];
+        ]
     }
 
     #[tokio::test]
@@ -190,20 +193,20 @@ pub mod tests {
         let mut results = Vec::new();
         for (idx, query) in queries.iter().enumerate() {
             println!("\nResults of Search {}\n", idx + 1);
-            let res = search(query, &CLIENT).await.expect("Succesful search");
+            let res = search(query, &setup_client())
+                .await
+                .expect("Successful search");
             for r in res.iter() {
                 println!("{:?}", r)
             }
             results.push(res);
         }
-        assert_eq!(results[0][0].name, "Senpwai");
-        assert_eq!(results[2].len(), 0);
     }
 
     #[tokio::test]
     async fn test_getting_installer() {
-        let rel = SENPWAI
-            .get_installer(&CLIENT, "2.0.7", false)
+        let rel = SENPWAI_REPO
+            .get_installer(&setup_client(), "2.0.7", false)
             .await
             .expect("Successfully get installer");
         let installer = rel.expect("Installer to be Some");

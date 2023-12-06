@@ -127,7 +127,7 @@ pub struct License {
 
 pub type ReleasesResponseJson = Vec<ReleaseResponseJson>;
 
-pub type Assets = Vec<Asset>;
+pub type AssetsResponseJson = Vec<Asset>;
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReleaseResponseJson {
@@ -145,7 +145,7 @@ pub struct ReleaseResponseJson {
     pub prerelease: bool,
     pub created_at: String,
     pub published_at: String,
-    pub assets: Assets,
+    pub assets: AssetsResponseJson,
     pub tarball_url: String,
     pub zipball_url: String,
     pub body: String,

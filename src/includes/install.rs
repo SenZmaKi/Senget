@@ -1,19 +1,18 @@
+use crate::utils::{LoadingAnimation, RequestOrIOError};
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use lnk::ShellLink;
-use std::{collections::HashSet, env, io::Error as IOError, path::PathBuf, process::Command};
+use std::{collections::HashSet, env, fs, io::Error as IOError, path::PathBuf, process::Command};
 use tokio::io::AsyncWriteExt;
 use winreg::{
     enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE},
     RegKey,
 };
 
-use super::utils::{LoadingAnimation, CLIENT};
-
 const SILENT_INSTALL_ARGS: [&str; 3] = [
     "/VERYSILENT", // Inno Setup
-    "/qn",     // MSI
-    "/S",      // NSIS
+    "/qn",         // MSI
+    "/S",          // NSIS
 ];
 
 const UNINSTALL_KEY_STR: &str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
@@ -32,23 +31,6 @@ fn find_startmenu() -> PathBuf {
     let path = appdata_path + "\\Microsoft\\Windows\\Start Menu\\Programs";
     PathBuf::from(path)
 }
-#[derive(Debug)]
-pub enum RequestOrIOError {
-    IOError(IOError),
-    ReqwestError(reqwest::Error),
-}
-
-impl From<IOError> for RequestOrIOError {
-    fn from(error: IOError) -> Self {
-        RequestOrIOError::IOError(error)
-    }
-}
-
-impl From<reqwest::Error> for RequestOrIOError {
-    fn from(error: reqwest::Error) -> Self {
-        RequestOrIOError::ReqwestError(error)
-    }
-}
 
 #[derive(Debug, Default, Clone)]
 pub struct Installer {
@@ -59,7 +41,12 @@ pub struct Installer {
     pub version: String,
 }
 impl Installer {
-    pub fn new(package_name: String, file_extension: String, url: String, version: String) -> Installer {
+    pub fn new(
+        package_name: String,
+        file_extension: String,
+        url: String,
+        version: String,
+    ) -> Installer {
         let file_title = format!("{}-Installer.{}", package_name, file_extension);
         Installer {
             package_name,
@@ -85,7 +72,10 @@ impl Installer {
         );
         let mut progress = 0;
         progress_bar.set_position(progress);
-        progress_bar.set_message(format!("Downloading {} v{}", self.package_name, self.version));
+        progress_bar.set_message(format!(
+            "Downloading {} v{}",
+            self.package_name, self.version
+        ));
         while let Some(chunk) = response.chunk().await? {
             file.write_all(&chunk).await?;
             progress += chunk.len() as u64;
@@ -208,16 +198,22 @@ impl Installer {
         Ok(uninstall_command)
     }
 
-    pub fn install(&self, file_path: &PathBuf,) -> Result<InstallInfo, IOError> {
-        let mut loading_animation =
-            LoadingAnimation::new(&format!("Installing {} v{}.. .", self.package_name, self.version));
-        loading_animation.start();
+    pub fn install(
+        &self,
+        file_path: &PathBuf,
+        loading_animation: &LoadingAnimation,
+    ) -> Result<InstallInfo, IOError> {
+        let join_handle = loading_animation.start(format!(
+            "Installing {} v{}.. .",
+            self.package_name, self.version
+        ));
         let user_reg_keys_before = Installer::fetch_reg_keys(&UNINSTALL_REG_KEY_USER)?;
         let machine_reg_keys_before = Installer::fetch_reg_keys(&UNINSTALL_REG_KEY_MACHINE)?;
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
         Installer::fetch_shortcut_files(&mut shortcut_files_before, true)?;
 
         Installer::run_installation(file_path)?;
+        fs::remove_file(file_path)?;
 
         let executable_path = self
             .statically_generate_package_shortcut()
@@ -227,7 +223,7 @@ impl Installer {
         let uninstall_command =
             Installer::fetch_uninstall_command(&user_reg_keys_before, &machine_reg_keys_before)?;
 
-        loading_animation.stop();
+        loading_animation.stop(join_handle);
         Ok(InstallInfo {
             executable_path,
             uninstall_command,
@@ -241,21 +237,25 @@ pub struct InstallInfo {
     pub uninstall_command: Option<String>,
 }
 mod tests {
-    use super::{lazy_static, Installer, PathBuf, CLIENT};
-    lazy_static! {
-        static ref INSTALLER: Installer = Installer::new(
+    use super::{Installer, PathBuf};
+    use crate::{
+        includes::utils::{LoadingAnimation, LOADING_ANIMATION},
+        utils::{setup_client, PACKAGE_INSTALLER_DIR},
+    };
+
+    fn senpwai_installer() -> Installer {
+        Installer::new(
             "Senpwai".to_owned(),
             "exe".to_owned(),
-            "https://github.com/SenZmaKi/Senpwai/releases/download/v2.0.7/Senpwai-setup.exe".to_owned(),
+            "https://github.com/SenZmaKi/Senpwai/releases/download/v2.0.7/Senpwai-setup.exe"
+                .to_owned(),
             "2.0.7".to_owned(),
-        );
-        static ref PACKAGE_INSTALLER_DIR: PathBuf =
-            PathBuf::from("Package-Installers").canonicalize().unwrap();
+        )
     }
     #[tokio::test]
     async fn test_downloading_installer() {
-        let f_path = INSTALLER
-            .download(&PACKAGE_INSTALLER_DIR, &CLIENT)
+        let f_path = senpwai_installer()
+            .download(&PACKAGE_INSTALLER_DIR, &setup_client())
             .await
             .expect("Successful Download");
         assert!(f_path.is_file());
@@ -264,7 +264,9 @@ mod tests {
     #[test]
     fn test_installation() {
         let path = PACKAGE_INSTALLER_DIR.join("Senpwai-Installer.exe");
-        let install_locations = INSTALLER.install(&path).expect("Successful Installation");
+        let install_locations = senpwai_installer()
+            .install(&path, &LOADING_ANIMATION)
+            .expect("Successful Installation");
         println!("Results for test installation\n {:?}", install_locations);
 
         assert!(install_locations
