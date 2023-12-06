@@ -1,4 +1,4 @@
-//! Module for interacting with the Github api
+//! Interacts with the github api
 use crate::{
     github::serde_json_types::{
         AssetsResponseJson, ReleasesResponseJson, RepoResponseJson, SearchResponseJson,
@@ -7,13 +7,15 @@ use crate::{
 };
 use lazy_static::lazy_static;
 use regex::{self, Regex};
+use serde::{Serialize, Deserialize};
 
 const GITHUB_HOME_URL: &str = "https://github.com";
 const GITHUB_API_ENTRY_POINT: &str = "https://api.github.com";
 lazy_static! {
     static ref VERSION_REGEX: Regex = Regex::new(r"(\d+(\.\d+)*)").unwrap();
 }
-#[derive(Debug, Clone)]
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Repo {
     pub name: String,
     pub full_name: String, // For example if the url is https://github.com/SenZmaKi/Senpwai the full_name is SenZmaKi/Senpwai

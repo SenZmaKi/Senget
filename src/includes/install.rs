@@ -1,7 +1,10 @@
+//! Manages package download and installation
+
 use crate::utils::{LoadingAnimation, RequestOrIOError};
 use indicatif::{ProgressBar, ProgressStyle};
 use lazy_static::lazy_static;
 use lnk::ShellLink;
+use serde::{Serialize, Deserialize};
 use std::{collections::HashSet, env, fs, io::Error as IOError, path::PathBuf, process::Command};
 use tokio::io::AsyncWriteExt;
 use winreg::{
@@ -231,7 +234,7 @@ impl Installer {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstallInfo {
     pub executable_path: Option<PathBuf>,
     pub uninstall_command: Option<String>,

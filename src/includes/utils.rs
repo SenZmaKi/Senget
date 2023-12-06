@@ -1,4 +1,4 @@
-//!Global variables and utility structs/enums/functions
+//!Global variables and utility structs, enums and functions
 
 use crate::includes::github::api::Repo;
 use lazy_static::lazy_static;

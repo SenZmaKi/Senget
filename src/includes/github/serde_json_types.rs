@@ -1,3 +1,5 @@
+//! Contains all Json types returned by various Github api calls
+
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
