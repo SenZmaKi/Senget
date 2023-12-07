@@ -240,9 +240,9 @@ pub struct InstallInfo {
     pub uninstall_command: Option<String>,
 }
 mod tests {
-    use super::{Installer, PathBuf};
+    use super::{Installer};
     use crate::{
-        includes::utils::{LoadingAnimation, LOADING_ANIMATION},
+        includes::utils::LOADING_ANIMATION,
         utils::{setup_client, PACKAGE_INSTALLER_DIR},
     };
 
