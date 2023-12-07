@@ -9,6 +9,8 @@ use lazy_static::lazy_static;
 use regex::{self, Regex};
 use serde::{Serialize, Deserialize};
 
+use super::serde_json_types::ReleaseResponseJson;
+
 const GITHUB_HOME_URL: &str = "https://github.com";
 const GITHUB_API_ENTRY_POINT: &str = "https://api.github.com";
 lazy_static! {
@@ -54,18 +56,16 @@ impl Repo {
         if releases_response_json.is_empty() {
             Ok(None)
         } else {
-            if version != "latest" {
-                version = match Repo::parse_version(version) {
-                    None => return Ok(None),
-                    Some(v) => v,
+            version = match Repo::parse_version(version) {
+                None => return Ok(None),
+                Some(v) => v,
                 };
-            }
             for r in releases_response_json {
                 let curr_ver = match Repo::parse_version(&r.tag_name) {
                     None => continue,
                     Some(v) => v,
                 };
-                if (version == curr_ver) || (version == "latest") {
+                if (version == curr_ver){
                     return Ok(Some((r.assets_url, curr_ver.to_owned())));
                 }
             }
@@ -102,26 +102,25 @@ impl Repo {
         &self,
         client: &reqwest::Client,
         version: &str,
-        is_update: bool,
     ) -> Result<Option<Installer>, reqwest::Error> {
         let (target_assets_url, returned_version) =
             match self.get_assets_url_by_version(version, client).await? {
                 None => return Ok(None),
                 Some(asset_url_and_version) => asset_url_and_version,
             };
-        if is_update && returned_version == version {
-            return Ok(None);
-        }
-
         let assets = client.get(target_assets_url).send().await?.json().await?;
-        let rel = self.parse_for_windows_installer(assets, returned_version);
-        Ok(rel)
+        Ok(self.parse_for_windows_installer(assets, returned_version))
     }
     pub async fn get_latest_installer(
         &self,
         client: &reqwest::Client,
     ) -> Result<Option<Installer>, reqwest::Error> {
-        self.get_installer(client, "latest", false).await
+        let url = self.generate_endpoint("releases/latest");
+        let release_response_json: ReleaseResponseJson = client.get(url).send().await?.json().await?;
+        if let Some(version) = Repo::parse_version(&release_response_json.tag_name){
+            return Ok(self.parse_for_windows_installer(release_response_json.assets, version.to_string()));
+        }
+        Ok(None)
     }
     fn generate_endpoint(&self, resource: &str) -> String {
         format!(
@@ -206,12 +205,21 @@ pub mod tests {
     }
 
     #[tokio::test]
+    async fn test_getting_latest_installer() {
+        let installer = SENPWAI_REPO.get_latest_installer(&setup_client()).await.expect("Getting latest installer");
+        let installer = installer.expect("Checking for valid installer");
+        println!("\nResults getting latest installer\n");
+        println!("{:?}", installer);
+
+    }
+
+    #[tokio::test]
     async fn test_getting_installer() {
-        let rel = SENPWAI_REPO
-            .get_installer(&setup_client(), "2.0.7", false)
+        let installer = SENPWAI_REPO
+            .get_installer(&setup_client(), "2.0.7")
             .await
-            .expect("Successfully get installer");
-        let installer = rel.expect("Installer to be Some");
+            .expect("Getting installer");
+        let installer = installer.expect("Checking for valid installer");
         assert_eq!(
             installer.url,
             "https://github.com/SenZmaKi/Senpwai/releases/download/v2.0.7/Senpwai-setup.exe"
