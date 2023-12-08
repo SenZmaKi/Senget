@@ -110,8 +110,8 @@ mod tests {
     fn test_removing_package() {
         let mut db_manager = make_db_manager();
         let removed_package = senpwai();
-        db_manager.add_package(removed_package.to_owned()).unwrap();
-        db_manager.remove_package(&removed_package).unwrap();
+        db_manager.add_package(removed_package.to_owned()).expect("Adding package");
+        db_manager.remove_package(&removed_package).expect("Removing package");
         assert!(db_manager
             .find_package(removed_package.repo.name)
             .expect("Finding package")
@@ -122,7 +122,7 @@ mod tests {
     fn test_finding_package() {
         let mut db_manager = make_db_manager();
         let package_to_find = senpwai();
-        db_manager.add_package(package_to_find.to_owned()).unwrap();
+        db_manager.add_package(package_to_find.to_owned()).expect("Adding package");
         let found_package = db_manager
             .find_package(package_to_find.repo.name.to_owned())
             .expect(FIND_PCKG_MSG)

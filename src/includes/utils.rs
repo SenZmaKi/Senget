@@ -2,7 +2,7 @@
 
 use crate::includes::github::api::Repo;
 use lazy_static::lazy_static;
-use reqwest::{header, Client};
+use reqwest::{header, Client, Request};
 use spinners::{Spinner, Spinners};
 use std::{
     io,
@@ -14,6 +14,7 @@ use std::{
 use super::{install::InstallInfo, package::Package};
 
 pub const APP_NAME: &str = "Senget";
+pub type GenericError = Box<dyn std::error::Error>;
 
 lazy_static! {
     pub static ref PACKAGE_INSTALLER_DIR: PathBuf = PathBuf::from("Package-Installers");
@@ -43,25 +44,6 @@ fn make_senpwai_package() -> Package {
 pub fn fatal_error(err: &(dyn std::error::Error + 'static)) -> ! {
     panic!("Fatal Error: {}", err);
 }
-
-#[derive(Debug)]
-pub enum RequestOrIOError {
-    IOError(io::Error),
-    ReqwestError(reqwest::Error),
-}
-
-impl From<io::Error> for RequestOrIOError {
-    fn from(error: io::Error) -> Self {
-        RequestOrIOError::IOError(error)
-    }
-}
-
-impl From<reqwest::Error> for RequestOrIOError {
-    fn from(error: reqwest::Error) -> Self {
-        RequestOrIOError::ReqwestError(error)
-    }
-}
-
 pub struct LoadingAnimation {
     stop_flag: Arc<(Mutex<bool>, Condvar)>,
 }
@@ -95,13 +77,13 @@ impl LoadingAnimation {
     }
 }
 
-pub fn setup_client() -> Client {
+pub fn setup_client() -> Result<Client, reqwest::Error> {
     let mut headers = header::HeaderMap::new();
     headers.insert(
         header::USER_AGENT,
         header::HeaderValue::from_static(APP_NAME),
     );
-    return Client::builder().default_headers(headers).build().unwrap();
+    return Ok(Client::builder().default_headers(headers).build()?);
 }
 
 pub fn strip_string(input: &str) -> String {
@@ -111,7 +93,24 @@ pub fn strip_string(input: &str) -> String {
         .collect::<String>()
         .to_lowercase()
 }
+use std::fmt;
 
+#[derive(Debug)]
+pub struct Error {
+    pub message: String,
+}
+impl Error {
+    pub fn new(message: String) -> Error {
+        Error { message }
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}Error: {}", APP_NAME, self.message)
+    }
+}
+impl std::error::Error for Error {}
 pub fn fuzzy_compare(main: &str, comp: &str) -> bool {
     strip_string(main).contains(comp)
 }

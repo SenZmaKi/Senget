@@ -7,15 +7,12 @@ use crate::{
 };
 use lazy_static::lazy_static;
 use regex::{self, Regex};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use super::serde_json_types::ReleaseResponseJson;
 
 const GITHUB_HOME_URL: &str = "https://github.com";
 const GITHUB_API_ENTRY_POINT: &str = "https://api.github.com";
-lazy_static! {
-    static ref VERSION_REGEX: Regex = Regex::new(r"(\d+(\.\d+)*)").unwrap();
-}
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Repo {
@@ -44,10 +41,15 @@ impl Repo {
         }
     }
 
+    pub fn generate_version_regex() -> Regex {
+        Regex::new(r"(\d+(\.\d+)*)").expect("Valid regex pattern")
+    }
+
     async fn get_assets_url_by_version(
         &self,
         version: &str,
         client: &reqwest::Client,
+        version_regex: &Regex,
     ) -> Result<Option<(String, String)>, reqwest::Error> {
         let url = self.generate_endpoint("releases");
         let releases_response_json: ReleasesResponseJson =
@@ -56,16 +58,16 @@ impl Repo {
         if releases_response_json.is_empty() {
             Ok(None)
         } else {
-            version = match Repo::parse_version(version) {
+            version = match Repo::parse_version(version, version_regex) {
                 None => return Ok(None),
                 Some(v) => v,
-                };
+            };
             for r in releases_response_json {
-                let curr_ver = match Repo::parse_version(&r.tag_name) {
+                let curr_ver = match Repo::parse_version(&r.tag_name, version_regex) {
                     None => continue,
                     Some(v) => v,
                 };
-                if (version == curr_ver){
+                if version == curr_ver {
                     return Ok(Some((r.assets_url, curr_ver.to_owned())));
                 }
             }
@@ -82,7 +84,7 @@ impl Repo {
         let mut url = "".to_owned();
         for asset in assets {
             let name = asset.name;
-            let inner_file_extension = name.split(".").last().unwrap();
+            let inner_file_extension = name.split(".").last().unwrap_or_default();
             if inner_file_extension == "exe" || inner_file_extension == "msi" {
                 file_extension = inner_file_extension.to_owned();
                 url = asset.browser_download_url;
@@ -102,23 +104,30 @@ impl Repo {
         &self,
         client: &reqwest::Client,
         version: &str,
+        version_regex: &Regex,
     ) -> Result<Option<Installer>, reqwest::Error> {
-        let (target_assets_url, returned_version) =
-            match self.get_assets_url_by_version(version, client).await? {
-                None => return Ok(None),
-                Some(asset_url_and_version) => asset_url_and_version,
-            };
+        let (target_assets_url, returned_version) = match self
+            .get_assets_url_by_version(version, client, version_regex)
+            .await?
+        {
+            None => return Ok(None),
+            Some(asset_url_and_version) => asset_url_and_version,
+        };
         let assets = client.get(target_assets_url).send().await?.json().await?;
         Ok(self.parse_for_windows_installer(assets, returned_version))
     }
     pub async fn get_latest_installer(
         &self,
         client: &reqwest::Client,
+        version_regex: &Regex,
     ) -> Result<Option<Installer>, reqwest::Error> {
         let url = self.generate_endpoint("releases/latest");
-        let release_response_json: ReleaseResponseJson = client.get(url).send().await?.json().await?;
-        if let Some(version) = Repo::parse_version(&release_response_json.tag_name){
-            return Ok(self.parse_for_windows_installer(release_response_json.assets, version.to_string()));
+        let release_response_json: ReleaseResponseJson =
+            client.get(url).send().await?.json().await?;
+        if let Some(version) = Repo::parse_version(&release_response_json.tag_name, version_regex) {
+            return Ok(
+                self.parse_for_windows_installer(release_response_json.assets, version.to_string())
+            );
         }
         Ok(None)
     }
@@ -128,8 +137,8 @@ impl Repo {
             GITHUB_API_ENTRY_POINT, self.full_name, resource
         )
     }
-    pub fn parse_version(text: &str) -> Option<&str> {
-        let mat: regex::Match = VERSION_REGEX.find(text)?;
+    pub fn parse_version<'a>(text: &'a str, version_regex: &Regex) -> Option<&'a str> {
+        let mat: regex::Match = version_regex.find(text)?;
         Some(mat.as_str())
     }
 }
@@ -194,32 +203,34 @@ pub mod tests {
         let mut results = Vec::new();
         for (idx, query) in queries.iter().enumerate() {
             println!("\nResults of Search {}\n", idx + 1);
-            let res = search(query, &setup_client())
+            let search_results = search(query, &setup_client().unwrap())
                 .await
-                .expect("Successful search");
-            for r in res.iter() {
+                .expect("Ok(search_results)");
+            for r in search_results.iter() {
                 println!("{:?}", r)
             }
-            results.push(res);
+            results.push(search_results);
         }
     }
 
     #[tokio::test]
     async fn test_getting_latest_installer() {
-        let installer = SENPWAI_REPO.get_latest_installer(&setup_client()).await.expect("Getting latest installer");
-        let installer = installer.expect("Checking for valid installer");
+        let installer = SENPWAI_REPO
+            .get_latest_installer(&setup_client().unwrap(), &Repo::generate_version_regex())
+            .await
+            .expect("Getting latest installer");
+        let installer = installer.expect("Some(installer)");
         println!("\nResults getting latest installer\n");
         println!("{:?}", installer);
-
     }
 
     #[tokio::test]
     async fn test_getting_installer() {
         let installer = SENPWAI_REPO
-            .get_installer(&setup_client(), "2.0.7")
+            .get_installer(&setup_client().unwrap(), "2.0.7", &Repo::generate_version_regex())
             .await
             .expect("Getting installer");
-        let installer = installer.expect("Checking for valid installer");
+        let installer = installer.expect("Some(installer)");
         assert_eq!(
             installer.url,
             "https://github.com/SenZmaKi/Senpwai/releases/download/v2.0.7/Senpwai-setup.exe"

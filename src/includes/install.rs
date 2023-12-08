@@ -1,39 +1,29 @@
 //! Manages package download and installation
 
-use crate::utils::{LoadingAnimation, RequestOrIOError};
+use crate::utils::{GenericError, LoadingAnimation};
 use indicatif::{ProgressBar, ProgressStyle};
-use lazy_static::lazy_static;
 use lnk::ShellLink;
-use serde::{Serialize, Deserialize};
-use std::{collections::HashSet, env, fs, io::Error as IOError, path::PathBuf, process::Command};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashSet,
+    env, fs,
+    io::{self, Error as IOError},
+    path::PathBuf,
+    process::Command,
+};
 use tokio::io::AsyncWriteExt;
 use winreg::{
     enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE},
     RegKey,
 };
 
+use super::utils;
+
 const SILENT_INSTALL_ARGS: [&str; 3] = [
     "/VERYSILENT", // Inno Setup
     "/qn",         // MSI
     "/S",          // NSIS
 ];
-
-const UNINSTALL_KEY_STR: &str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
-lazy_static! {
-    static ref START_MENU_FOLDER: PathBuf = find_startmenu();
-    static ref UNINSTALL_REG_KEY_MACHINE: RegKey = RegKey::predef(HKEY_LOCAL_MACHINE)
-        .open_subkey(UNINSTALL_KEY_STR)
-        .unwrap();
-    static ref UNINSTALL_REG_KEY_USER: RegKey = RegKey::predef(HKEY_CURRENT_USER)
-        .open_subkey(UNINSTALL_KEY_STR)
-        .unwrap();
-}
-
-fn find_startmenu() -> PathBuf {
-    let appdata_path = env::var("APPDATA").unwrap();
-    let path = appdata_path + "\\Microsoft\\Windows\\Start Menu\\Programs";
-    PathBuf::from(path)
-}
 
 #[derive(Debug, Default, Clone)]
 pub struct Installer {
@@ -44,6 +34,8 @@ pub struct Installer {
     pub version: String,
 }
 impl Installer {
+    const UNINSTALL_KEY_STR: &str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
+
     pub fn new(
         package_name: String,
         file_extension: String,
@@ -63,15 +55,19 @@ impl Installer {
         &self,
         path: &PathBuf,
         client: &reqwest::Client,
-    ) -> Result<PathBuf, RequestOrIOError> {
+    ) -> Result<PathBuf, GenericError> {
         let path = path.join(&self.file_title);
         let mut file = tokio::fs::File::create(&path).await?;
         let mut response = client.get(&self.url).send().await?;
-        let progress_bar = ProgressBar::new(response.content_length().unwrap());
+        let progress_bar = ProgressBar::new(
+            response
+                .content_length()
+                .ok_or_else(|| utils::Error::new("Content-Length header is not set".to_owned()))?,
+        );
         progress_bar.set_style(
             ProgressStyle::default_bar()
                 .template("{msg} {wide_bar} {bytes}/{total_bytes} ({eta} left)")
-                .unwrap(),
+                .expect("Valid template"),
         );
         let mut progress = 0;
         progress_bar.set_position(progress);
@@ -87,11 +83,26 @@ impl Installer {
         progress_bar.finish_with_message("Download complete");
         Ok(path)
     }
+
+    pub fn generate_machine_uninstall_reg_key() -> Result<RegKey, io::Error> {
+        Ok(RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(Installer::UNINSTALL_KEY_STR)?)
+    }
+
+    pub fn generate_user_uninstall_reg_key() -> Result<RegKey, io::Error> {
+        Ok(RegKey::predef(HKEY_CURRENT_USER).open_subkey(Installer::UNINSTALL_KEY_STR)?)
+    }
+
+    pub fn generate_startmenu_path() -> PathBuf {
+        let appdata_path = env::var("APPDATA").expect("APPDATA environment variable to be set");
+        let path = appdata_path + "\\Microsoft\\Windows\\Start Menu\\Programs";
+        PathBuf::from(path)
+    }
     fn fetch_shortcut_files(
         files: &mut HashSet<PathBuf>,
+        startmenu_folder: &PathBuf,
         check_inner_folders: bool,
     ) -> Result<(), IOError> {
-        let entries = START_MENU_FOLDER.read_dir()?;
+        let entries = startmenu_folder.read_dir()?;
         for e in entries {
             match e {
                 Ok(e) => {
@@ -99,7 +110,7 @@ impl Installer {
                     if e.is_file() && e.ends_with(".lnk") {
                         files.insert(e);
                     } else if check_inner_folders && e.is_dir() {
-                        Installer::fetch_shortcut_files(files, false)?;
+                        Installer::fetch_shortcut_files(files, startmenu_folder, false)?;
                     }
                 }
                 Err(err) => return Err(err),
@@ -126,8 +137,8 @@ impl Installer {
         Ok(())
     }
 
-    fn statically_generate_package_shortcut(&self) -> Option<PathBuf> {
-        let shortcut_path = START_MENU_FOLDER.join(format!("{}.lnk", self.package_name));
+    fn statically_generate_package_shortcut(&self, startmenu_folder: &PathBuf) -> Option<PathBuf> {
+        let shortcut_path = startmenu_folder.join(format!("{}.lnk", self.package_name));
         if shortcut_path.is_file() {
             Some(shortcut_path)
         } else {
@@ -143,9 +154,10 @@ impl Installer {
 
     fn dynamically_find_package_shortcut(
         shortcut_files_before: &HashSet<PathBuf>,
+        startmenu_folder: &PathBuf,
     ) -> Option<PathBuf> {
         let mut shortcut_files_after = HashSet::<PathBuf>::new();
-        Installer::fetch_shortcut_files(&mut shortcut_files_after, true).ok()?;
+        Installer::fetch_shortcut_files(&mut shortcut_files_after, startmenu_folder, true).ok()?;
 
         let new_files = shortcut_files_after
             .difference(shortcut_files_before)
@@ -183,19 +195,21 @@ impl Installer {
     fn fetch_uninstall_command(
         user_reg_keys_before: &HashSet<String>,
         machine_reg_keys_before: &HashSet<String>,
+        user_uninstall_reg_key: &RegKey,
+        machine_uninstall_reg_key: &RegKey,
     ) -> Result<Option<String>, IOError> {
-        let user_reg_keys_after = Installer::fetch_reg_keys(&UNINSTALL_REG_KEY_USER)?;
+        let user_reg_keys_after = Installer::fetch_reg_keys(user_uninstall_reg_key)?;
         let mut uninstall_command = Installer::fetch_uninstall_command_for_key(
             &user_reg_keys_after,
             &user_reg_keys_before,
-            &UNINSTALL_REG_KEY_USER,
+            &user_uninstall_reg_key,
         );
         if uninstall_command.is_none() {
-            let machine_reg_keys_after = Installer::fetch_reg_keys(&UNINSTALL_REG_KEY_MACHINE)?;
+            let machine_reg_keys_after = Installer::fetch_reg_keys(machine_uninstall_reg_key)?;
             uninstall_command = Installer::fetch_uninstall_command_for_key(
                 &machine_reg_keys_after,
                 &machine_reg_keys_before,
-                &UNINSTALL_REG_KEY_MACHINE,
+                &machine_uninstall_reg_key,
             );
         }
         Ok(uninstall_command)
@@ -205,26 +219,38 @@ impl Installer {
         &self,
         file_path: &PathBuf,
         loading_animation: &LoadingAnimation,
+        startmenu_folder: &PathBuf,
+        user_uninstall_reg_key: &RegKey,
+        machine_uninstall_reg_key: &RegKey,
     ) -> Result<InstallInfo, IOError> {
         let join_handle = loading_animation.start(format!(
             "Installing {} v{}.. .",
             self.package_name, self.version
         ));
-        let user_reg_keys_before = Installer::fetch_reg_keys(&UNINSTALL_REG_KEY_USER)?;
-        let machine_reg_keys_before = Installer::fetch_reg_keys(&UNINSTALL_REG_KEY_MACHINE)?;
+        let user_reg_keys_before = Installer::fetch_reg_keys(user_uninstall_reg_key)?;
+        let machine_reg_keys_before = Installer::fetch_reg_keys(machine_uninstall_reg_key)?;
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
-        Installer::fetch_shortcut_files(&mut shortcut_files_before, true)?;
+        Installer::fetch_shortcut_files(&mut shortcut_files_before, startmenu_folder, true)?;
 
         Installer::run_installation(file_path)?;
         fs::remove_file(file_path)?;
 
         let executable_path = self
-            .statically_generate_package_shortcut()
-            .or_else(|| Installer::dynamically_find_package_shortcut(&shortcut_files_before))
+            .statically_generate_package_shortcut(startmenu_folder)
+            .or_else(|| {
+                Installer::dynamically_find_package_shortcut(
+                    &shortcut_files_before,
+                    startmenu_folder,
+                )
+            })
             .and_then(|path| Installer::find_shorcut_target(&path));
 
-        let uninstall_command =
-            Installer::fetch_uninstall_command(&user_reg_keys_before, &machine_reg_keys_before)?;
+        let uninstall_command = Installer::fetch_uninstall_command(
+            &user_reg_keys_before,
+            &machine_reg_keys_before,
+            user_uninstall_reg_key,
+            machine_uninstall_reg_key,
+        )?;
 
         loading_animation.stop(join_handle);
         Ok(InstallInfo {
@@ -240,9 +266,8 @@ pub struct InstallInfo {
     pub uninstall_command: Option<String>,
 }
 mod tests {
-    use super::{Installer};
     use crate::{
-        includes::utils::LOADING_ANIMATION,
+        includes::{install::Installer, utils::LOADING_ANIMATION},
         utils::{setup_client, PACKAGE_INSTALLER_DIR},
     };
 
@@ -258,24 +283,32 @@ mod tests {
     #[tokio::test]
     async fn test_downloading_installer() {
         let f_path = senpwai_installer()
-            .download(&PACKAGE_INSTALLER_DIR, &setup_client())
+            .download(&PACKAGE_INSTALLER_DIR, &setup_client().unwrap())
             .await
-            .expect("Successful Download");
+            .expect("Downloading");
         assert!(f_path.is_file());
     }
 
     #[test]
     fn test_installation() {
         let path = PACKAGE_INSTALLER_DIR.join("Senpwai-Installer.exe");
-        let install_locations = senpwai_installer()
-            .install(&path, &LOADING_ANIMATION)
-            .expect("Successful Installation");
-        println!("Results for test installation\n {:?}", install_locations);
+        let startmenu_path = Installer::generate_startmenu_path();
+        let install_info = senpwai_installer()
+            .install(
+                &path,
+                &LOADING_ANIMATION,
+                &Installer::generate_startmenu_path(),
+                &Installer::generate_user_uninstall_reg_key().expect("Ok(user_uninstall_reg_key)"),
+                &Installer::generate_machine_uninstall_reg_key()
+                    .expect("Ok(machine_uninstall_reg_key)"),
+            )
+            .expect("Ok(install_info)");
+        println!("Results for test_installation\n {:?}", install_info);
 
-        assert!(install_locations
+        assert!(install_info
             .executable_path
-            .expect("Executable path to be Some")
+            .expect("Some(executable_path)")
             .is_file());
-        assert!(install_locations.uninstall_command.is_some());
+        assert!(install_info.uninstall_command.is_some());
     }
 }

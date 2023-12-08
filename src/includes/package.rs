@@ -3,11 +3,13 @@
 use crate::{
     github::{self, api::Repo, serde_json_types::RepoResponseJson},
     install::InstallInfo,
-    utils::{LoadingAnimation, RequestOrIOError},
+    utils::{GenericError, LoadingAnimation},
 };
+use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{io, path::PathBuf, process::Command};
+use winreg::RegKey;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
@@ -43,10 +45,14 @@ impl Package {
         client: &Client,
         path: &PathBuf,
         loading_animation: &LoadingAnimation,
-    ) -> Result<Option<Package>, RequestOrIOError> {
+        version_regex: &Regex,
+        startmenu_folder: &PathBuf,
+        user_uninstall_reg_key: &RegKey,
+        machine_uninstall_reg_key: &RegKey,
+    ) -> Result<Option<Package>, GenericError> {
         let installer = self
             .repo
-            .get_latest_installer(client)
+            .get_latest_installer(client, version_regex)
             .await?
             .filter(|i| i.version != self.version);
         match installer {
@@ -57,7 +63,13 @@ impl Package {
                 new shorcut files after installation and for uninstall_command it checks for new registry entries.
                 For these reasons there won't probably be any new shortcut files/registry entries if it's an update cause
                 the update will just overwride the previously existing shortcut file/registry entry*/
-                let install_info = i.install(&p, loading_animation)?;
+                let install_info = i.install(
+                    &p,
+                    loading_animation,
+                    startmenu_folder,
+                    user_uninstall_reg_key,
+                    machine_uninstall_reg_key,
+                )?;
                 let executable_path = install_info
                     .executable_path
                     .or(self.install_info.executable_path.clone());
@@ -81,28 +93,42 @@ impl Package {
 }
 
 mod tests {
-    use crate::includes::utils::{
-        setup_client, LOADING_ANIMATION, PACKAGE_INSTALLER_DIR, SENPWAI_PACKAGE,
+    use crate::includes::{
+        github::api::Repo,
+        install::Installer,
+        utils::{setup_client, LOADING_ANIMATION, PACKAGE_INSTALLER_DIR, SENPWAI_PACKAGE},
     };
     use tokio;
 
     #[tokio::test]
     async fn test_updating() {
-        let package = SENPWAI_PACKAGE
-            .update(&setup_client(), &PACKAGE_INSTALLER_DIR, &LOADING_ANIMATION)
+        let new_package = SENPWAI_PACKAGE
+            .update(
+                &setup_client().unwrap(),
+                &PACKAGE_INSTALLER_DIR,
+                &LOADING_ANIMATION,
+                &Repo::generate_version_regex(),
+                &Installer::generate_startmenu_path(),
+                &Installer::generate_user_uninstall_reg_key().expect("Ok(user_uninstall_reg_key)"),
+                &Installer::generate_machine_uninstall_reg_key()
+                    .expect("Ok(machine_uninstall_reg_key)"),
+            )
             .await
-            .expect("Successful Update")
-            .expect("Updated Package");
-        println!("Results for update {:?}", package);
-        assert!(package.version != "2.0.6");
-        assert!(package
+            .expect("Ok(Option<Package>)")
+            .expect("Some(new_package)");
+        println!("Results for update {:?}", new_package);
+        assert!(new_package.version != "2.0.6");
+        assert!(new_package
             .install_info
             .executable_path
-            .expect("Valid executable path")
+            .expect("Some(executable_path)")
             .is_file());
+        assert!(new_package.install_info.uninstall_command.is_some());
     }
     #[test]
     fn test_uninstalling() {
-        assert!(SENPWAI_PACKAGE.uninstall(&LOADING_ANIMATION).unwrap())
+        assert!(SENPWAI_PACKAGE
+            .uninstall(&LOADING_ANIMATION)
+            .expect("Ok(uninstall)"))
     }
 }

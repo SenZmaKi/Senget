@@ -4,3 +4,4 @@ pub mod install;
 pub mod some_shit;
 pub mod package;
 pub mod database;
+pub mod cli;
