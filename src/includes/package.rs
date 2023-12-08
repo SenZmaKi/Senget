@@ -14,6 +14,7 @@ use winreg::RegKey;
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
     pub version: String,
+    pub lowercase_name: String, // Used when querying the database
     pub repo: Repo,
     install_info: InstallInfo,
 }
@@ -22,6 +23,7 @@ impl Package {
     pub fn new(version: String, repo: Repo, install_info: InstallInfo) -> Package {
         Package {
             version,
+            lowercase_name: repo.name.to_lowercase(),
             repo,
             install_info,
         }

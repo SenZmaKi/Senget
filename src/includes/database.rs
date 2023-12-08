@@ -14,9 +14,7 @@ impl PackageDBManager {
         if !db_folder.is_dir() {
             fs::create_dir(&db_folder)?;
         }
-        Ok(db_folder
-            .join("Packages.tinydb")
-            .canonicalize()?)
+        Ok(db_folder.join("Packages.tinydb").canonicalize()?)
     }
     pub fn new(save_path: &PathBuf) -> Result<PackageDBManager, DatabaseError> {
         let db = match save_path.is_file() {
@@ -29,8 +27,10 @@ impl PackageDBManager {
         Ok(PackageDBManager { db })
     }
 
-    pub fn find_package<'a>(&'a self, name: String) -> Result<Option<&'a Package>, DatabaseError> {
-        let package = self.db.query_item(|p| &(p.repo.name), name);
+    pub fn find_package<'a>(&'a self, name: &str) -> Result<Option<&'a Package>, DatabaseError> {
+        let package = self
+            .db
+            .query_item(|p| &(&p.lowercase_name), name.to_lowercase());
         match package {
             Err(err) => match err {
                 DatabaseError::ItemNotFound => Ok(None),
@@ -100,7 +100,7 @@ mod tests {
             .add_package(added_package.to_owned())
             .expect("Adding package");
         let found_package = db_manager
-            .find_package(added_package.repo.name.to_owned())
+            .find_package(&added_package.lowercase_name)
             .expect(FIND_PCKG_MSG)
             .expect("Checking for valid package");
         assert!(added_package == *found_package);
@@ -110,10 +110,14 @@ mod tests {
     fn test_removing_package() {
         let mut db_manager = make_db_manager();
         let removed_package = senpwai();
-        db_manager.add_package(removed_package.to_owned()).expect("Adding package");
-        db_manager.remove_package(&removed_package).expect("Removing package");
+        db_manager
+            .add_package(removed_package.to_owned())
+            .expect("Adding package");
+        db_manager
+            .remove_package(&removed_package)
+            .expect("Removing package");
         assert!(db_manager
-            .find_package(removed_package.repo.name)
+            .find_package(&removed_package.lowercase_name)
             .expect("Finding package")
             .is_none())
     }
@@ -122,9 +126,11 @@ mod tests {
     fn test_finding_package() {
         let mut db_manager = make_db_manager();
         let package_to_find = senpwai();
-        db_manager.add_package(package_to_find.to_owned()).expect("Adding package");
+        db_manager
+            .add_package(package_to_find.to_owned())
+            .expect("Adding package");
         let found_package = db_manager
-            .find_package(package_to_find.repo.name.to_owned())
+            .find_package(&package_to_find.lowercase_name)
             .expect(FIND_PCKG_MSG)
             .expect("Checking for valid package");
         assert_eq!(*found_package, package_to_find);
@@ -143,7 +149,7 @@ mod tests {
             .update_package(&old_package, new_package.to_owned())
             .expect("Updating package");
         let found_package = db_manager
-            .find_package(new_package.repo.name.to_owned())
+            .find_package(&new_package.repo.name)
             .expect(FIND_PCKG_MSG)
             .expect("Checking for valid package");
         assert_eq!(*found_package, new_package);
