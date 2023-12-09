@@ -10,7 +10,11 @@ use crate::includes::{
     github::{self, api::Repo},
 };
 
-use super::{error::KnownErrors, package::Package, utils::LoadingAnimation};
+use super::{
+    error::KnownErrors,
+    package::{self, Package},
+    utils::LoadingAnimation,
+};
 
 pub async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, reqwest::Error> {
     let name_lower = name.to_lowercase();
@@ -82,6 +86,25 @@ pub async fn install_package(
     }
 }
 
+fn uninstall_package(
+    db: &mut PackageDBManager,
+    name: &str,
+    loading_animation: &LoadingAnimation,
+) -> Result<(), KnownErrors> {
+    match db.find_package(name)? {
+        Some(package) => {
+            package.uninstall(loading_animation)?;
+            db.remove_package(package)?;
+            Ok(println!("Succesfully uninstalled {}", package.repo.name))
+        }
+        None => Ok(println!(
+            "Couldn't find an installed package named \"{}\"",
+            name
+        )),
+    }
+}
+
+
 mod tests {
     use crate::includes::{
         cli::show_package,
@@ -95,7 +118,9 @@ mod tests {
         show_package(&dbm, "Senpwai", client).await.unwrap();
         dbm.add_package(senpwai_latest_package()).unwrap();
         println!();
-        show_package(&dbm, "SenZmaKi/Senpwai", client).await.unwrap();
+        show_package(&dbm, "SenZmaKi/Senpwai", client)
+            .await
+            .unwrap();
         println!();
         show_package(&dbm, "99419gb0", client).await.unwrap();
     }
