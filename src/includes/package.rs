@@ -18,6 +18,7 @@ use crate::includes::error::RequestIoContentLengthError;
 pub struct Package {
     pub version: String,
     pub lowercase_name: String, // Used when querying the database
+    pub lowercase_fullname: String,
     pub repo: Repo,
     install_info: InstallInfo,
 }
@@ -30,7 +31,7 @@ impl fmt::Display for Package {
             .executable_path
             .as_ref()
             .and_then(|ep| ep.parent().and_then(|ef| Some(ef.display().to_string())))
-            .unwrap_or("Unknown".to_owned());
+            .unwrap_or_default();
 
         write!(f, "{}\nVersion: {}\nInstallation Folder: {}", self.repo, version, installation_folder)
     }
@@ -40,6 +41,7 @@ impl Package {
         Package {
             version,
             lowercase_name: repo.name.to_lowercase(),
+            lowercase_fullname: repo.full_name.to_lowercase(),
             repo,
             install_info,
         }

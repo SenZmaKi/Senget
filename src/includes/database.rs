@@ -28,12 +28,21 @@ impl PackageDBManager {
     }
 
     pub fn find_package<'a>(&'a self, name: &str) -> Result<Option<&'a Package>, DatabaseError> {
+        let name_lower = name.to_lowercase();
         let package = self
             .db
-            .query_item(|p| &(&p.lowercase_name), name.to_lowercase());
+            .query_item(|p| &p.lowercase_fullname, name_lower.to_owned());
         match package {
             Err(err) => match err {
-                DatabaseError::ItemNotFound => Ok(None),
+                DatabaseError::ItemNotFound => {
+                    match self.db.query_item(|p| &p.lowercase_name, name_lower) {
+                        Err(err) => match err {
+                            DatabaseError::ItemNotFound => Ok(None),
+                            _ => Err(err),
+                        },
+                        Ok(p) => Ok(Some(p)),
+                    }
+                }
                 _ => Err(err),
             },
 
@@ -66,7 +75,7 @@ impl PackageDBManager {
 
 #[cfg(test)]
 mod tests {
-    use crate::includes::test_utils::{senpwai_latest_package, db_manager};
+    use crate::includes::test_utils::{db_manager, senpwai_latest_package};
 
     #[test]
     fn test_adding_package() {
@@ -76,7 +85,9 @@ mod tests {
             .add_package(added_package.to_owned())
             .expect("Adding package");
         let found_package = db_manager
-            .find_package(&added_package.lowercase_name).unwrap().unwrap();
+            .find_package(&added_package.lowercase_name)
+            .unwrap()
+            .unwrap();
         assert!(added_package == *found_package);
     }
 
@@ -84,8 +95,7 @@ mod tests {
     fn test_removing_package() {
         let mut db_manager = db_manager();
         let removed_package = senpwai_latest_package();
-        db_manager
-            .add_package(removed_package.to_owned()).unwrap();
+        db_manager.add_package(removed_package.to_owned()).unwrap();
         db_manager
             .remove_package(&removed_package)
             .expect("Removing package");
@@ -103,7 +113,14 @@ mod tests {
             .add_package(package_to_find.to_owned())
             .expect("Adding package");
         let found_package = db_manager
-            .find_package(&package_to_find.lowercase_name).unwrap().unwrap();
+            .find_package(&package_to_find.lowercase_name)
+            .unwrap()
+            .unwrap();
+        assert_eq!(*found_package, package_to_find);
+        let found_package = db_manager
+            .find_package(&package_to_find.lowercase_fullname)
+            .unwrap()
+            .unwrap();
         assert_eq!(*found_package, package_to_find);
     }
 
@@ -120,7 +137,9 @@ mod tests {
             .update_package(&old_package, new_package.to_owned())
             .expect("Updating package");
         let found_package = db_manager
-            .find_package(&new_package.repo.name).unwrap().unwrap();
+            .find_package(&new_package.repo.name)
+            .unwrap()
+            .unwrap();
         assert_eq!(*found_package, new_package);
     }
 }

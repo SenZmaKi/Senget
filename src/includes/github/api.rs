@@ -22,20 +22,22 @@ pub struct Repo {
     pub url: String,
     pub description: Option<String>,
     pub language: Option<String>,
+    pub license: Option<String>,
 }
 
 impl fmt::Display for Repo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let name = &self.name;
         let url = &self.url;
-        let language = self.language.to_owned().unwrap_or("Unknown".to_owned());
-        let description = self.description.to_owned().unwrap_or("Unknown".to_owned());
+        let language = self.language.to_owned().unwrap_or_default();
+        let description = self.description.to_owned().unwrap_or_default();
         let author = self.full_name.split("/").collect::<Vec<&str>>()[0];
+        let license = self.license.to_owned().unwrap_or_default();
 
         write!(
             f,
-            "Name: {}\nAuthor: {}\nRepository Url: {}\nPrimary Language: {}\nDescription: {}",
-            name, author, url, language, description
+            "Name: {}\nAuthor: {}\nRepository Url: {}\nPrimary Language: {}\nDescription: {}\nLicense: {}",
+            name, author, url, language, description, license
         )
     }
 }
@@ -48,6 +50,7 @@ impl Repo {
         url: String,
         description: Option<String>,
         language: Option<String>,
+        license: Option<String>,
     ) -> Repo {
         Repo {
             url,
@@ -55,6 +58,7 @@ impl Repo {
             full_name,
             description,
             language,
+            license,
         }
     }
 
@@ -167,6 +171,7 @@ pub fn extract_repo(repo_response_json: RepoResponseJson) -> Repo {
         repo_response_json.html_url,
         repo_response_json.description,
         repo_response_json.language,
+        repo_response_json.license.map(|l| l.name)
     )
 }
 pub async fn search(query: &str, client: &reqwest::Client) -> Result<Vec<Repo>, reqwest::Error> {
@@ -196,6 +201,7 @@ pub mod tests {
                 "https://github.com/senzmaki/nyakamwizi".to_owned(),
                 Some("A credit card fraud detection machine learning model".to_owned()),
                 Some("Jupyter Notebook".to_owned()),
+                None,
             ),
             Repo::new(
                 "Hatt".to_owned(),
@@ -203,6 +209,7 @@ pub mod tests {
                 "https://github.com/frenchgithubuser/hatt".to_owned(),
                 Some("DDL Meta search engine".to_owned()),
                 Some("Go".to_owned()),
+                None,
             ),
             Repo::new(
                 "Gin-Swagger".to_owned(),
@@ -210,6 +217,7 @@ pub mod tests {
                 "https://github.com/swaggo/gin-swagger".to_owned(),
                 None,
                 Some("Go".to_owned()),
+                None,
             ),
         ]
     }
