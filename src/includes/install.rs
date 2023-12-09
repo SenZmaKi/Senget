@@ -1,8 +1,8 @@
 //! Manages package download and installation
 
-use crate::utils::{GenericError, LoadingAnimation};
 use indicatif::{ProgressBar, ProgressStyle};
 use lnk::ShellLink;
+use reqwest::Request;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
@@ -17,7 +17,10 @@ use winreg::{
     RegKey,
 };
 
-use super::utils;
+use crate::includes::{
+    error::{ContentLengthError, RequestIoContentLengthError},
+    utils::LoadingAnimation,
+};
 
 const SILENT_INSTALL_ARGS: [&str; 3] = [
     "/VERYSILENT", // Inno Setup
@@ -55,14 +58,14 @@ impl Installer {
         &self,
         path: &PathBuf,
         client: &reqwest::Client,
-    ) -> Result<PathBuf, GenericError> {
+    ) -> Result<PathBuf, RequestIoContentLengthError> {
         let path = path.join(&self.file_title);
         let mut file = tokio::fs::File::create(&path).await?;
         let mut response = client.get(&self.url).send().await?;
         let progress_bar = ProgressBar::new(
             response
                 .content_length()
-                .ok_or_else(|| utils::Error::new("Content-Length header is not set".to_owned()))?,
+                .ok_or_else(|| ContentLengthError)?,
         );
         progress_bar.set_style(
             ProgressStyle::default_bar()
@@ -265,25 +268,17 @@ pub struct InstallInfo {
     pub executable_path: Option<PathBuf>,
     pub uninstall_command: Option<String>,
 }
+
 mod tests {
-    use crate::{
-        includes::{install::Installer, utils::LOADING_ANIMATION},
-        utils::{setup_client, PACKAGE_INSTALLER_DIR},
+    use crate::includes::{
+        install::Installer,
+        test_utils::{client, loading_animation, package_installers_dir, senpwai_latest_installer},
     };
 
-    fn senpwai_installer() -> Installer {
-        Installer::new(
-            "Senpwai".to_owned(),
-            "exe".to_owned(),
-            "https://github.com/SenZmaKi/Senpwai/releases/download/v2.0.7/Senpwai-setup.exe"
-                .to_owned(),
-            "2.0.7".to_owned(),
-        )
-    }
     #[tokio::test]
     async fn test_downloading_installer() {
-        let f_path = senpwai_installer()
-            .download(&PACKAGE_INSTALLER_DIR, &setup_client().unwrap())
+        let f_path = senpwai_latest_installer()
+            .download(&package_installers_dir(), &client())
             .await
             .expect("Downloading");
         assert!(f_path.is_file());
@@ -291,12 +286,12 @@ mod tests {
 
     #[test]
     fn test_installation() {
-        let path = PACKAGE_INSTALLER_DIR.join("Senpwai-Installer.exe");
+        let path = package_installers_dir().join("Senpwai-Installer.exe");
         let startmenu_path = Installer::generate_startmenu_path();
-        let install_info = senpwai_installer()
+        let install_info = senpwai_latest_installer()
             .install(
                 &path,
-                &LOADING_ANIMATION,
+                &loading_animation(),
                 &Installer::generate_startmenu_path(),
                 &Installer::generate_user_uninstall_reg_key().expect("Ok(user_uninstall_reg_key)"),
                 &Installer::generate_machine_uninstall_reg_key()

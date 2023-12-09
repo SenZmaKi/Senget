@@ -49,7 +49,6 @@ impl PackageDBManager {
 
     pub fn add_package(&mut self, package: Package) -> Result<(), DatabaseError> {
         self.db.add_item(package)?;
-        println!("{:?}", self.db.save_path);
         self.db.dump_db()?;
         Ok(())
     }
@@ -67,52 +66,26 @@ impl PackageDBManager {
 
 #[cfg(test)]
 mod tests {
-    use crate::includes::database::PackageDBManager;
-    use crate::includes::package::Package;
-    use crate::utils::SENPWAI_PACKAGE;
-    use std::fs;
-    use std::path::PathBuf;
-    const FIND_PCKG_MSG: &str = "Finding package";
-    fn setup_db_save_path() -> PathBuf {
-        let db_folder = PathBuf::from("Test-Database");
-        if !db_folder.is_dir() {
-            fs::create_dir(&db_folder).expect("Making Test-Database folder");
-        }
-        // Delete previous DB file cause each test assumes it's a clean start
-        let f = db_folder.join("test.tinydb");
-        if f.is_file() {
-            fs::remove_file(&f).expect("Removing previous DB file");
-        }
-        f
-    }
-    fn make_db_manager() -> PackageDBManager {
-        PackageDBManager::new(&setup_db_save_path()).expect("Making PackageDBManager struct")
-    }
-    fn senpwai() -> Package {
-        (*SENPWAI_PACKAGE).to_owned()
-    }
+    use crate::includes::test_utils::{senpwai_latest_package, db_manager};
 
     #[test]
     fn test_adding_package() {
-        let mut db_manager = make_db_manager();
-        let added_package = senpwai();
+        let mut db_manager = db_manager();
+        let added_package = senpwai_latest_package();
         db_manager
             .add_package(added_package.to_owned())
             .expect("Adding package");
         let found_package = db_manager
-            .find_package(&added_package.lowercase_name)
-            .expect(FIND_PCKG_MSG)
-            .expect("Checking for valid package");
+            .find_package(&added_package.lowercase_name).unwrap().unwrap();
         assert!(added_package == *found_package);
     }
 
     #[test]
     fn test_removing_package() {
-        let mut db_manager = make_db_manager();
-        let removed_package = senpwai();
+        let mut db_manager = db_manager();
+        let removed_package = senpwai_latest_package();
         db_manager
-            .add_package(removed_package.to_owned())
-            .expect("Adding package");
+            .add_package(removed_package.to_owned()).unwrap();
         db_manager
             .remove_package(&removed_package)
             .expect("Removing package");
@@ -124,22 +97,20 @@ mod tests {
 
     #[test]
     fn test_finding_package() {
-        let mut db_manager = make_db_manager();
-        let package_to_find = senpwai();
+        let mut db_manager = db_manager();
+        let package_to_find = senpwai_latest_package();
         db_manager
             .add_package(package_to_find.to_owned())
             .expect("Adding package");
         let found_package = db_manager
-            .find_package(&package_to_find.lowercase_name)
-            .expect(FIND_PCKG_MSG)
-            .expect("Checking for valid package");
+            .find_package(&package_to_find.lowercase_name).unwrap().unwrap();
         assert_eq!(*found_package, package_to_find);
     }
 
     #[test]
     fn test_updating_package() {
-        let mut db_manager = make_db_manager();
-        let old_package = senpwai();
+        let mut db_manager = db_manager();
+        let old_package = senpwai_latest_package();
         db_manager
             .add_package(old_package.to_owned())
             .expect("Adding package");
@@ -149,9 +120,7 @@ mod tests {
             .update_package(&old_package, new_package.to_owned())
             .expect("Updating package");
         let found_package = db_manager
-            .find_package(&new_package.repo.name)
-            .expect(FIND_PCKG_MSG)
-            .expect("Checking for valid package");
+            .find_package(&new_package.repo.name).unwrap().unwrap();
         assert_eq!(*found_package, new_package);
     }
 }

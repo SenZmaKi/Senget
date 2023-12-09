@@ -1,11 +1,12 @@
 //! Interacts with the github api
+use core::fmt;
+
 use crate::{
     github::serde_json_types::{
         AssetsResponseJson, ReleasesResponseJson, RepoResponseJson, SearchResponseJson,
     },
     includes::install::Installer,
 };
-use lazy_static::lazy_static;
 use regex::{self, Regex};
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +22,22 @@ pub struct Repo {
     pub url: String,
     pub description: Option<String>,
     pub language: Option<String>,
+}
+
+impl fmt::Display for Repo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let name = &self.name;
+        let url = &self.url;
+        let language = self.language.to_owned().unwrap_or("Unknown".to_owned());
+        let description = self.description.to_owned().unwrap_or("Unknown".to_owned());
+        let author = self.full_name.split("/").collect::<Vec<&str>>()[0];
+
+        write!(
+            f,
+            "Name: {}\nAuthor: {}\nRepository Url: {}\nPrimary Language: {}\nDescription: {}",
+            name, author, url, language, description
+        )
+    }
 }
 impl Repo {
     // static member
@@ -165,14 +182,14 @@ pub async fn search(query: &str, client: &reqwest::Client) -> Result<Vec<Repo>, 
 #[cfg(test)]
 pub mod tests {
 
-    use crate::{
+    use crate::includes::{
         github::api::{search, Repo},
-        utils::{setup_client, SENPWAI_REPO},
+        test_utils::{client, senpwai_repo},
     };
 
     fn repos() -> Vec<Repo> {
         vec![
-            (*SENPWAI_REPO).to_owned(),
+            senpwai_repo(),
             Repo::new(
                 "NyakaMwizi".to_owned(),
                 "SenZmaKi/NyakaMwizi".to_owned(),
@@ -203,11 +220,9 @@ pub mod tests {
         let mut results = Vec::new();
         for (idx, query) in queries.iter().enumerate() {
             println!("\nResults of Search {}\n", idx + 1);
-            let search_results = search(query, &setup_client().unwrap())
-                .await
-                .expect("Ok(search_results)");
+            let search_results = search(query, &client()).await.expect("Ok(search_results)");
             for r in search_results.iter() {
-                println!("{:?}", r)
+                println!("{}", r)
             }
             results.push(search_results);
         }
@@ -215,8 +230,8 @@ pub mod tests {
 
     #[tokio::test]
     async fn test_getting_latest_installer() {
-        let installer = SENPWAI_REPO
-            .get_latest_installer(&setup_client().unwrap(), &Repo::generate_version_regex())
+        let installer = senpwai_repo()
+            .get_latest_installer(&client(), &Repo::generate_version_regex())
             .await
             .expect("Getting latest installer");
         let installer = installer.expect("Some(installer)");
@@ -226,8 +241,8 @@ pub mod tests {
 
     #[tokio::test]
     async fn test_getting_installer() {
-        let installer = SENPWAI_REPO
-            .get_installer(&setup_client().unwrap(), "2.0.7", &Repo::generate_version_regex())
+        let installer = senpwai_repo()
+            .get_installer(&client(), "2.0.7", &Repo::generate_version_regex())
             .await
             .expect("Getting installer");
         let installer = installer.expect("Some(installer)");

@@ -1,45 +1,15 @@
 //!Global variables and utility structs, enums and functions
 
-use crate::includes::github::api::Repo;
-use lazy_static::lazy_static;
-use reqwest::{header, Client, Request};
+use reqwest::{header, Client};
 use spinners::{Spinner, Spinners};
 use std::{
-    io,
-    path::PathBuf,
     sync::{Arc, Condvar, Mutex},
     thread::{self, JoinHandle},
 };
 
-use super::{install::InstallInfo, package::Package};
 
 pub const APP_NAME: &str = "Senget";
-pub type GenericError = Box<dyn std::error::Error>;
 
-lazy_static! {
-    pub static ref PACKAGE_INSTALLER_DIR: PathBuf = PathBuf::from("Package-Installers");
-    // Test utils
-    pub static ref SENPWAI_REPO: Repo = Repo::new(
-        "Senpwai".to_owned(),
-        "SenZmaKi/Senpwai".to_owned(),
-        "https://github.com/senzmaki/senpwai".to_owned(),
-        Some("A desktop app for batch downloading anime".to_owned()),
-        Some("Python".to_owned()),
-    );
-    pub static ref SENPWAI_PACKAGE: Package = make_senpwai_package();
-    pub static ref LOADING_ANIMATION: LoadingAnimation = LoadingAnimation::new();
-}
-fn make_senpwai_package() -> Package {
-    let install_info = InstallInfo {
-        executable_path: Some(PathBuf::from(
-            "C:\\Users\\PC\\AppData\\Local\\Programs\\Senpwai\\Senpwai.exe",
-        )),
-        uninstall_command: Some(
-            "C:\\Users\\PC\\AppData\\Local\\Programs\\Senpwai\\unins000.exe /SILENT".to_owned(),
-        ),
-    };
-    Package::new("2.0.6".to_owned(), (*SENPWAI_REPO).to_owned(), install_info)
-}
 
 pub fn fatal_error(err: &(dyn std::error::Error + 'static)) -> ! {
     panic!("Fatal Error: {}", err);
@@ -77,6 +47,9 @@ impl LoadingAnimation {
     }
 }
 
+
+// pub fn handle_network_error()
+
 pub fn setup_client() -> Result<Client, reqwest::Error> {
     let mut headers = header::HeaderMap::new();
     headers.insert(
@@ -93,39 +66,24 @@ pub fn strip_string(input: &str) -> String {
         .collect::<String>()
         .to_lowercase()
 }
-use std::fmt;
 
-#[derive(Debug)]
-pub struct Error {
-    pub message: String,
-}
-impl Error {
-    pub fn new(message: String) -> Error {
-        Error { message }
-    }
-}
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}Error: {}", APP_NAME, self.message)
-    }
-}
-impl std::error::Error for Error {}
 pub fn fuzzy_compare(main: &str, comp: &str) -> bool {
     strip_string(main).contains(comp)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::LOADING_ANIMATION;
+    use crate::includes::test_utils::loading_animation;
     use std::thread;
     use std::time::Duration;
     #[test]
     fn test_loading() {
         let run = || {
-            let join_handle = LOADING_ANIMATION.start("Fondling balls.. .".to_owned());
+            let load_anim = loading_animation();
+            let join_handle = load_anim.start("Fondling balls.. .".to_owned());
             thread::sleep(Duration::new(5, 0));
-            LOADING_ANIMATION.stop(join_handle);
+            load_anim.stop(join_handle);
         };
         run();
         thread::sleep(Duration::new(2, 0));

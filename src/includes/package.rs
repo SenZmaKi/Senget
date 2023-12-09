@@ -3,13 +3,16 @@
 use crate::{
     github::{self, api::Repo, serde_json_types::RepoResponseJson},
     install::InstallInfo,
-    utils::{GenericError, LoadingAnimation},
+    utils::LoadingAnimation,
 };
+use core::fmt;
 use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{io, path::PathBuf, process::Command};
 use winreg::RegKey;
+
+use crate::includes::error::RequestIoContentLengthError;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
@@ -19,6 +22,19 @@ pub struct Package {
     install_info: InstallInfo,
 }
 
+impl fmt::Display for Package {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let version = &self.version;
+        let installation_folder = self
+            .install_info
+            .executable_path
+            .as_ref()
+            .and_then(|ep| ep.parent().and_then(|ef| Some(ef.display().to_string())))
+            .unwrap_or("Unknown".to_owned());
+
+        write!(f, "{}\nVersion: {}\nInstallation Folder: {}", self.repo, version, installation_folder)
+    }
+}
 impl Package {
     pub fn new(version: String, repo: Repo, install_info: InstallInfo) -> Package {
         Package {
@@ -51,7 +67,7 @@ impl Package {
         startmenu_folder: &PathBuf,
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
-    ) -> Result<Option<Package>, GenericError> {
+    ) -> Result<Option<Package>, RequestIoContentLengthError> {
         let installer = self
             .repo
             .get_latest_installer(client, version_regex)
@@ -98,17 +114,20 @@ mod tests {
     use crate::includes::{
         github::api::Repo,
         install::Installer,
-        utils::{setup_client, LOADING_ANIMATION, PACKAGE_INSTALLER_DIR, SENPWAI_PACKAGE},
+        test_utils::{
+            client, loading_animation, package_installers_dir, senpwai_package,
+            senpwai_latest_package,
+        },
     };
     use tokio;
 
     #[tokio::test]
     async fn test_updating() {
-        let new_package = SENPWAI_PACKAGE
+        let new_package = senpwai_package("2.0.6".to_owned())
             .update(
-                &setup_client().unwrap(),
-                &PACKAGE_INSTALLER_DIR,
-                &LOADING_ANIMATION,
+                &client(),
+                &package_installers_dir(),
+                &loading_animation(),
                 &Repo::generate_version_regex(),
                 &Installer::generate_startmenu_path(),
                 &Installer::generate_user_uninstall_reg_key().expect("Ok(user_uninstall_reg_key)"),
@@ -129,8 +148,8 @@ mod tests {
     }
     #[test]
     fn test_uninstalling() {
-        assert!(SENPWAI_PACKAGE
-            .uninstall(&LOADING_ANIMATION)
+        assert!(senpwai_latest_package()
+            .uninstall(&loading_animation())
             .expect("Ok(uninstall)"))
     }
 }

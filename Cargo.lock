@@ -7,9 +7,7 @@ name = "Senget"
 version = "0.1.0"
 dependencies = [
  "indicatif",
- "lazy_static",
  "lnk",
- "once_cell",
  "regex",
  "reqwest",
  "serde",
