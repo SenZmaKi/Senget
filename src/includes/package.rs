@@ -92,10 +92,10 @@ impl Package {
                 )?;
                 let executable_path = install_info
                     .executable_path
-                    .or(self.install_info.executable_path.clone());
+                    .or(self.install_info.executable_path.to_owned());
                 let uninstall_command = install_info
                     .uninstall_command
-                    .or(self.install_info.uninstall_command.clone());
+                    .or(self.install_info.uninstall_command.to_owned());
                 let repo_response_json: RepoResponseJson =
                     client.get(&self.repo.url).send().await?.json().await?;
                 Ok(Some(Package::new(

@@ -7,16 +7,13 @@ use winreg::RegKey;
 use crate::includes::{
     database::PackageDBManager,
     error::print_error_and_exit,
-    github::{self, api::Repo},
-};
-
-use super::{
     error::KnownErrors,
+    github::{self, api::Repo},
     package::{self, Package},
     utils::LoadingAnimation,
 };
 
-pub async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, reqwest::Error> {
+async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, reqwest::Error> {
     let name_lower = name.to_lowercase();
     let mut found_repo: Option<Repo> = None;
     for r in github::api::search(name, client).await? {
@@ -94,8 +91,8 @@ fn uninstall_package(
     match db.find_package(name)? {
         Some(package) => {
             package.uninstall(loading_animation)?;
-            db.remove_package(package)?;
-            Ok(println!("Succesfully uninstalled {}", package.repo.name))
+            db.remove_package(&package.to_owned())?;
+            Ok(println!("Succesfully uninstalled {}", ""))
         }
         None => Ok(println!(
             "Couldn't find an installed package named \"{}\"",
@@ -104,10 +101,48 @@ fn uninstall_package(
     }
 }
 
+async fn update_package(
+    db: &mut PackageDBManager,
+    name: &str,
+    client: &Client,
+    version_regex: &Regex,
+    download_path: &PathBuf,
+    loading_animation: &LoadingAnimation,
+    startmenu_folder: &PathBuf,
+    user_uninstall_reg_key: &RegKey,
+    machine_uninstall_reg_key: &RegKey,
+) -> Result<(), KnownErrors> {
+    match db.find_package(name)? {
+        Some(old_package) => {
+            match old_package
+                .update(
+                    client,
+                    download_path,
+                    loading_animation,
+                    version_regex,
+                    startmenu_folder,
+                    user_uninstall_reg_key,
+                    machine_uninstall_reg_key,
+                )
+                .await?
+            {
+                Some(new_package) => {
+                    db.update_package(&old_package.to_owned(), new_package)?;
+                    Ok(())
+                }
+                None => Ok(println!("Couldn't find a valid installer for the package")),
+            }
+        }
+        None => Ok(println!(
+            "Couldn't find an installed package named \"{}\"",
+            name
+        )),
+    }
+}
 
 mod tests {
     use crate::includes::{
-        cli::show_package,
+        commands::show_package,
         test_utils::{client, db_manager, senpwai_latest_package},
     };
 
