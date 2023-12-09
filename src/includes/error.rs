@@ -18,6 +18,7 @@ impl fmt::Display for ContentLengthError {
 #[derive(Debug)]
 pub enum KnownErrors {
     RequestError(reqwest::Error),
+    IoError(io::Error),
     DatabaseError(tinydb::error::DatabaseError),
     RequestIoError(RequestIoError),
     RequestIoContentLengthError(RequestIoContentLengthError),
@@ -69,6 +70,11 @@ impl From<reqwest::Error> for RequestIoContentLengthError {
 impl From<reqwest::Error> for KnownErrors {
     fn from(error: reqwest::Error) -> Self {
         KnownErrors::RequestError(error)
+    }
+}
+impl From<io::Error> for KnownErrors {
+    fn from(error: io::Error) -> Self {
+        KnownErrors::IoError(error)
     }
 }
 impl From<tinydb::error::DatabaseError> for KnownErrors {

@@ -50,8 +50,8 @@ impl Package {
         match &self.install_info.uninstall_command {
             Some(us) => {
                 let join_handle = loading_animation.start(format!(
-                    "Uninstalling {} v{}.. .",
-                    self.repo.full_name, self.version
+                    "Uninstalling {}.. .",
+                    self.repo.name
                 ));
                 Command::new(us).output()?;
                 loading_animation.stop(join_handle);

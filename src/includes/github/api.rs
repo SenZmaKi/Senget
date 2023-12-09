@@ -230,7 +230,7 @@ pub mod tests {
             println!("\nResults of Search {}\n", idx + 1);
             let search_results = search(query, &client()).await.expect("Ok(search_results)");
             for r in search_results.iter() {
-                println!("{}", r)
+                println!("{}\n", r)
             }
             results.push(search_results);
         }
@@ -244,7 +244,7 @@ pub mod tests {
             .expect("Getting latest installer");
         let installer = installer.expect("Some(installer)");
         println!("\nResults getting latest installer\n");
-        println!("{:?}", installer);
+        println!("{:?}\n", installer);
     }
 
     #[tokio::test]

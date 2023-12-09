@@ -9,6 +9,7 @@ use std::{
 
 
 pub const APP_NAME: &str = "Senget";
+pub const APP_NAME_LOWER: &str = "senget";
 
 
 pub fn fatal_error(err: &(dyn std::error::Error + 'static)) -> ! {

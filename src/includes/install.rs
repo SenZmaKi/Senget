@@ -220,23 +220,23 @@ impl Installer {
 
     pub fn install(
         &self,
-        file_path: &PathBuf,
+        installer_path: &PathBuf,
         loading_animation: &LoadingAnimation,
         startmenu_folder: &PathBuf,
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
     ) -> Result<InstallInfo, IOError> {
         let join_handle = loading_animation.start(format!(
-            "Installing {} v{}.. .",
-            self.package_name, self.version
+            "Installing {}.. .",
+            self.package_name
         ));
         let user_reg_keys_before = Installer::fetch_reg_keys(user_uninstall_reg_key)?;
         let machine_reg_keys_before = Installer::fetch_reg_keys(machine_uninstall_reg_key)?;
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
         Installer::fetch_shortcut_files(&mut shortcut_files_before, startmenu_folder, true)?;
 
-        Installer::run_installation(file_path)?;
-        fs::remove_file(file_path)?;
+        Installer::run_installation(installer_path)?;
+        fs::remove_file(installer_path)?;
 
         let executable_path = self
             .statically_generate_package_shortcut(startmenu_folder)
