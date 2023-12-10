@@ -20,7 +20,11 @@ use crate::includes::{
 
 use super::{install::Installer, utils::APP_NAME_LOWER};
 
-async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, reqwest::Error> {
+pub fn eprint_no_package_found(name: &str) {
+    eprintln!("No installed package named \"{}\" found.", name);
+}
+
+async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, KnownErrors> {
     let name_lower = name.to_lowercase();
     let mut found_repo: Option<Repo> = None;
     for r in github::api::search(name, client).await? {
@@ -42,7 +46,7 @@ pub async fn show_package(
         Some(package) => Ok(println!("{}", package)),
         None => match find_repo(name, client).await? {
             Some(repo) => Ok(println!("{}", repo)),
-            None => Ok(println!("Couldn't find any package named \"{}\"", name)),
+            None => Ok(eprint_no_package_found(name)),
         },
     }
 }
@@ -66,13 +70,13 @@ pub async fn download_installer(
                     Ok(Some((repo, installer, installer_path)))
                 }
                 None => {
-                    println!("Couldn't find a valid installer for {}", name);
+                    eprint_no_package_found(name);
                     Ok(None)
                 }
             }
         }
         None => {
-            println!("Couldn't find a package named \"{}\"", name);
+            eprint_no_package_found(name);
             Ok(None)
         }
     }
@@ -90,7 +94,10 @@ pub async fn install_package(
     machine_uninstall_reg_key: &RegKey,
 ) -> Result<(), KnownErrors> {
     match db.find_package(name)? {
-        Some(package) => Ok(println!("{}\nPackage is already installed", package)),
+        Some(package) => {
+            println!("{}\n", package);
+            Ok(eprintln!("Package is already installed."))
+        }
         None => {
             match download_installer(name, client, version, version_regex, download_path).await? {
                 Some((repo, installer, installer_path)) => {
@@ -104,7 +111,7 @@ pub async fn install_package(
                     let package_name = repo.name.to_owned();
                     let package = Package::new(installer.version, repo, install_info);
                     db.add_package(package)?;
-                    Ok(println!("Succesfully installed {}", package_name))
+                    Ok(println!("Successfully installed {}.", package_name))
                 }
                 None => Ok(()),
             }
@@ -121,12 +128,9 @@ fn uninstall_package(
         Some(package) => {
             package.uninstall(loading_animation)?;
             db.remove_package(&package.to_owned())?;
-            Ok(println!("Succesfully uninstalled {}", ""))
+            Ok(println!("Successfully uninstalled {}.", ""))
         }
-        None => Ok(println!(
-            "Couldn't find an installed package named \"{}\"",
-            name
-        )),
+        None => Ok(eprint_no_package_found(name)),
     }
 }
 
@@ -161,13 +165,13 @@ async fn update_package(
                     db.update_package(&old_package.to_owned(), new_package)?;
                     Ok(())
                 }
-                None => Ok(println!("Couldn't find a valid installer for the package")),
+                None => Ok(eprintln!(
+                    "No valid installer found for {}.",
+                    old_package.repo.name
+                )),
             }
         }
-        None => Ok(println!(
-            "Couldn't find an installed package named \"{}\"",
-            name
-        )),
+        None => Ok(eprint_no_package_found(name)),
     }
 }
 
@@ -203,7 +207,7 @@ pub async fn search_repos(query: &str, client: &Client) -> Result<(), KnownError
     let results = github::api::search(query, client).await?;
     let mut final_str = "".to_owned();
     if results.is_empty() {
-        return Ok(println!("No results found"));
+        return Ok(println!("No results found."));
     }
     for r in results {
         final_str += &format!(
@@ -267,12 +271,9 @@ pub fn run_package(db: &PackageDBManager, name: &str) -> Result<(), KnownErrors>
                 Command::new(ep).spawn()?;
                 Ok(())
             }
-            None => Ok(println!("Couldn't find the executable for {}", p.repo.name)),
+            None => Ok(eprintln!("No executable found for {}.", p.repo.name)),
         },
-        None => Ok(println!(
-            "Couldn't find an installed package named \"{}\"",
-            name
-        )),
+        None => Ok(eprint_no_package_found(name)),
     }
 }
 
