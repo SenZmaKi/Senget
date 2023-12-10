@@ -168,7 +168,7 @@ fn list_packages(db: &PackageDBManager) -> () {
     let mut name_width = "Name".len();
     let mut version_width = "Version".len();
     let mut installation_folder_width = "Installation Folder".len();
-    let compare_len = |prev_max_len: usize, curr_str: &str| {curr_str.len().max(curr_str.len())};
+    let compare_len = |prev_max_len: usize, curr_str: &str| curr_str.len().max(curr_str.len());
     let packages = db.fetch_all_packages();
     for p in packages {
         name_width = compare_len(name_width, &p.repo.name);
@@ -192,10 +192,26 @@ fn list_packages(db: &PackageDBManager) -> () {
     print!("{}", final_str);
 }
 
+pub async fn search_repos(query: &str, client: &Client) -> Result<(), KnownErrors> {
+    let results = github::api::search(query, client).await?;
+    let mut final_str = "".to_owned();
+    if results.is_empty() {
+        return Ok(println!("No results found"));
+    }
+    for r in results {
+        final_str += &format!(
+            "Full Name: {}\nDescription: {}\n\n",
+            r.full_name,
+            r.description.unwrap_or_default()
+        );
+    }
+    Ok(print!("{}", final_str))
+}
+
 mod tests {
     use crate::includes::{
-        commands::{list_packages, show_package},
-        test_utils::{client, db_manager, senpwai_latest_package, hatt_package},
+        commands::{list_packages, search_repos, show_package},
+        test_utils::{client, db_manager, hatt_package, senpwai_latest_package},
     };
 
     #[tokio::test]
@@ -210,6 +226,11 @@ mod tests {
             .unwrap();
         println!();
         show_package(&dbm, "99419gb0", client).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_search_repos() {
+        search_repos("Python", &client()).await.unwrap();
     }
 
     #[test]
