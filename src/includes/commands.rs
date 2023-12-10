@@ -2,6 +2,7 @@ use std::{
     fs::{self, File},
     io::{self, Read, Write},
     path::PathBuf,
+    process::Command,
 };
 
 use regex::Regex;
@@ -255,6 +256,19 @@ pub async fn extract_package_name_and_version(
         name_and_version.push((package_name.to_owned(), version.to_owned()));
     }
     Ok(name_and_version)
+}
+
+pub fn run_package(db: &PackageDBManager, name: &str) -> Result<(), KnownErrors> {
+    match db.find_package(name)? {
+        Some(p) => match &p.install_info.executable_path {
+            Some(ep) => {
+                Command::new(ep).spawn()?;
+                Ok(())
+            }
+            None => Ok(println!("Couldn't find the executable for {}", p.repo.name)),
+        },
+        None => Ok(println!("Couldn't find a package named \"{}\"", name)),
+    }
 }
 
 mod tests {
