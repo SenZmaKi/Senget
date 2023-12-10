@@ -1,4 +1,8 @@
-use std::path::PathBuf;
+use std::{
+    fs::{self, File},
+    io::{self, Read, Write},
+    path::PathBuf,
+};
 
 use regex::Regex;
 use reqwest::Client;
@@ -13,7 +17,7 @@ use crate::includes::{
     utils::LoadingAnimation,
 };
 
-use super::install::Installer;
+use super::{install::Installer, utils::APP_NAME_LOWER};
 
 async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, reqwest::Error> {
     let name_lower = name.to_lowercase();
@@ -208,6 +212,51 @@ pub async fn search_repos(query: &str, client: &Client) -> Result<(), KnownError
     Ok(print!("{}", final_str))
 }
 
+pub fn export_packages(
+    db: &PackageDBManager,
+    export_folder_path: &PathBuf,
+) -> Result<PathBuf, KnownErrors> {
+    let mut final_str = "".to_owned();
+    for p in db.fetch_all_packages() {
+        let p_entry = format!("{}=={}\n", &p.repo.full_name, &p.version);
+        final_str.push_str(&p_entry);
+    }
+    let export_file_path = export_folder_path.join(format!("{}-packages.txt", APP_NAME_LOWER));
+    let mut f = File::create(&export_file_path)?;
+    f.write_all(final_str.as_bytes())?;
+    Ok(export_file_path)
+}
+
+pub async fn extract_package_name_and_version(
+    export_file_path: &PathBuf,
+    ignore_versions: bool,
+) -> Result<Vec<(String, String)>, KnownErrors> {
+    let mut name_and_version: Vec<(String, String)> = Vec::new();
+    for line in tokio::fs::read_to_string(export_file_path)
+        .await?
+        .lines()
+        .into_iter()
+        .filter(|l| !l.is_empty())
+    {
+        let mut package_name = line;
+        let version = match ignore_versions {
+            true => "latest",
+            false => {
+                let split = line.split("==").collect::<Vec<&str>>();
+                match split.len() >= 2 {
+                    true => {
+                        package_name = split[0];
+                        split[1]
+                    }
+                    false => "latest",
+                }
+            }
+        };
+        name_and_version.push((package_name.to_owned(), version.to_owned()));
+    }
+    Ok(name_and_version)
+}
+
 mod tests {
     use crate::includes::{
         commands::{list_packages, search_repos, show_package},
@@ -216,16 +265,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_show_package() {
-        let mut dbm = db_manager();
+        let mut db = db_manager();
         let client = &client();
-        show_package(&dbm, "Senpwai", client).await.unwrap();
+        show_package(&db, "Senpwai", client).await.unwrap();
         println!();
-        dbm.add_package(senpwai_latest_package()).unwrap();
-        show_package(&dbm, "SenZmaKi/Senpwai", client)
-            .await
-            .unwrap();
+        db.add_package(senpwai_latest_package()).unwrap();
+        show_package(&db, "SenZmaKi/Senpwai", client).await.unwrap();
         println!();
-        show_package(&dbm, "99419gb0", client).await.unwrap();
+        show_package(&db, "99419gb0", client).await.unwrap();
     }
 
     #[tokio::test]
@@ -235,9 +282,9 @@ mod tests {
 
     #[test]
     fn test_list_packages() {
-        let mut dbm = db_manager();
-        dbm.add_package(senpwai_latest_package()).unwrap();
-        dbm.add_package(hatt_package()).unwrap();
-        list_packages(&dbm);
+        let mut db = db_manager();
+        db.add_package(senpwai_latest_package()).unwrap();
+        db.add_package(hatt_package()).unwrap();
+        list_packages(&db);
     }
 }
