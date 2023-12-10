@@ -226,10 +226,7 @@ impl Installer {
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
     ) -> Result<InstallInfo, IOError> {
-        let join_handle = loading_animation.start(format!(
-            "Installing {}.. .",
-            self.package_name
-        ));
+        let join_handle = loading_animation.start(format!("Installing {}.. .", self.package_name));
         let user_reg_keys_before = Installer::fetch_reg_keys(user_uninstall_reg_key)?;
         let machine_reg_keys_before = Installer::fetch_reg_keys(machine_uninstall_reg_key)?;
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
@@ -248,6 +245,9 @@ impl Installer {
             })
             .and_then(|path| Installer::find_shorcut_target(&path));
 
+        let installation_folder =
+            executable_path.as_ref().and_then(|ep| ep.parent().map(|p| PathBuf::from(p)));
+
         let uninstall_command = Installer::fetch_uninstall_command(
             &user_reg_keys_before,
             &machine_reg_keys_before,
@@ -258,6 +258,7 @@ impl Installer {
         loading_animation.stop(join_handle);
         Ok(InstallInfo {
             executable_path,
+            installation_folder,
             uninstall_command,
         })
     }
@@ -266,6 +267,7 @@ impl Installer {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstallInfo {
     pub executable_path: Option<PathBuf>,
+    pub installation_folder: Option<PathBuf>,
     pub uninstall_command: Option<String>,
 }
 

@@ -20,20 +20,18 @@ pub struct Package {
     pub lowercase_name: String, // Used when querying the database
     pub lowercase_fullname: String,
     pub repo: Repo,
-    install_info: InstallInfo,
+    pub install_info: InstallInfo,
 }
 
 impl fmt::Display for Package {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let version = &self.version;
-        let installation_folder = self
-            .install_info
-            .executable_path
-            .as_ref()
-            .and_then(|ep| ep.parent().and_then(|ef| Some(ef.display().to_string())))
-            .unwrap_or_default();
-
-        write!(f, "{}\nVersion: {}\nInstallation Folder: {}", self.repo, version, installation_folder)
+        write!(
+            f,
+            "{}\nVersion: {}\nInstallation Folder: {}",
+            self.repo,
+            &self.version,
+            self.installation_folder_str()
+        )
     }
 }
 impl Package {
@@ -46,13 +44,19 @@ impl Package {
             install_info,
         }
     }
+    pub fn installation_folder_str(&self) -> String {
+        self
+            .install_info
+            .installation_folder
+            .as_ref()
+            .map(|f| f.display().to_string())
+            .unwrap_or_default()
+    }
     pub fn uninstall(&self, loading_animation: &LoadingAnimation) -> Result<bool, io::Error> {
         match &self.install_info.uninstall_command {
             Some(us) => {
-                let join_handle = loading_animation.start(format!(
-                    "Uninstalling {}.. .",
-                    self.repo.name
-                ));
+                let join_handle =
+                    loading_animation.start(format!("Uninstalling {}.. .", self.repo.name));
                 Command::new(us).output()?;
                 loading_animation.stop(join_handle);
                 Ok(true)
@@ -93,6 +97,9 @@ impl Package {
                 let executable_path = install_info
                     .executable_path
                     .or(self.install_info.executable_path.to_owned());
+                let installation_folder = install_info
+                    .installation_folder
+                    .or(self.install_info.installation_folder.to_owned());
                 let uninstall_command = install_info
                     .uninstall_command
                     .or(self.install_info.uninstall_command.to_owned());
@@ -103,6 +110,7 @@ impl Package {
                     github::api::extract_repo(repo_response_json),
                     InstallInfo {
                         executable_path,
+                        installation_folder,
                         uninstall_command,
                     },
                 )))
@@ -117,8 +125,8 @@ mod tests {
         github::api::Repo,
         install::Installer,
         test_utils::{
-            client, loading_animation, package_installers_dir, senpwai_package,
-            senpwai_latest_package,
+            client, loading_animation, package_installers_dir, senpwai_latest_package,
+            senpwai_package,
         },
     };
     use tokio;

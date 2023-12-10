@@ -164,10 +164,38 @@ async fn update_package(
     }
 }
 
+fn list_packages(db: &PackageDBManager) -> () {
+    let mut name_width = "Name".len();
+    let mut version_width = "Version".len();
+    let mut installation_folder_width = "Installation Folder".len();
+    let compare_len = |prev_max_len: usize, curr_str: &str| {curr_str.len().max(curr_str.len())};
+    let packages = db.fetch_all_packages();
+    for p in packages {
+        name_width = compare_len(name_width, &p.repo.name);
+        version_width = compare_len(version_width, &p.version);
+        installation_folder_width =
+            compare_len(installation_folder_width, &p.installation_folder_str());
+    }
+    let format_row = |name: &str, version: &str, installation_folder: &str| {
+        format!(
+            "{:<name_width$}    {:<version_width$}    {:<installation_folder_width$}\n",
+            name, version, installation_folder
+        )
+    };
+    let mut final_str = format_row("Name", "Version", "Installation Folder");
+    let spaces_count = 4 + 4;
+    final_str += &"-".repeat(name_width + version_width + installation_folder_width + spaces_count);
+    final_str += "\n";
+    for p in packages {
+        final_str += &format_row(&p.repo.name, &p.version, &p.installation_folder_str());
+    }
+    print!("{}", final_str);
+}
+
 mod tests {
     use crate::includes::{
-        commands::show_package,
-        test_utils::{client, db_manager, senpwai_latest_package},
+        commands::{list_packages, show_package},
+        test_utils::{client, db_manager, senpwai_latest_package, hatt_package},
     };
 
     #[tokio::test]
@@ -175,12 +203,20 @@ mod tests {
         let mut dbm = db_manager();
         let client = &client();
         show_package(&dbm, "Senpwai", client).await.unwrap();
-        dbm.add_package(senpwai_latest_package()).unwrap();
         println!();
+        dbm.add_package(senpwai_latest_package()).unwrap();
         show_package(&dbm, "SenZmaKi/Senpwai", client)
             .await
             .unwrap();
         println!();
         show_package(&dbm, "99419gb0", client).await.unwrap();
+    }
+
+    #[test]
+    fn test_list_packages() {
+        let mut dbm = db_manager();
+        dbm.add_package(senpwai_latest_package()).unwrap();
+        dbm.add_package(hatt_package()).unwrap();
+        list_packages(&dbm);
     }
 }

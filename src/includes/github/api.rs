@@ -189,26 +189,19 @@ pub mod tests {
 
     use crate::includes::{
         github::api::{search, Repo},
-        test_utils::{client, senpwai_repo},
+        test_utils::{client, senpwai_repo, hatt_repo},
     };
 
     fn repos() -> Vec<Repo> {
         vec![
             senpwai_repo(),
+            hatt_repo(),
             Repo::new(
                 "NyakaMwizi".to_owned(),
                 "SenZmaKi/NyakaMwizi".to_owned(),
                 "https://github.com/senzmaki/nyakamwizi".to_owned(),
                 Some("A credit card fraud detection machine learning model".to_owned()),
                 Some("Jupyter Notebook".to_owned()),
-                None,
-            ),
-            Repo::new(
-                "Hatt".to_owned(),
-                "Frenchgithubuser/Hatt".to_owned(),
-                "https://github.com/frenchgithubuser/hatt".to_owned(),
-                Some("DDL Meta search engine".to_owned()),
-                Some("Go".to_owned()),
                 None,
             ),
             Repo::new(

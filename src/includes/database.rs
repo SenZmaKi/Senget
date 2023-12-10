@@ -1,7 +1,7 @@
 //! Manages the database for installed packages
 use crate::includes::package::Package;
 use crate::utils::APP_NAME;
-use std::{fs, io, path::PathBuf};
+use std::{fs, io, path::PathBuf, collections::HashSet};
 use tinydb::{error::DatabaseError, Database};
 
 pub struct PackageDBManager {
@@ -70,6 +70,9 @@ impl PackageDBManager {
         self.db.update_item(old_package, new_package)?;
         self.db.dump_db()?;
         Ok(())
+    }
+    pub fn fetch_all_packages(&self) -> &HashSet<Package> {
+        &self.db.items
     }
 }
 
