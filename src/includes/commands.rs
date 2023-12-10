@@ -134,6 +134,7 @@ async fn update_package(
     db: &mut PackageDBManager,
     name: &str,
     client: &Client,
+    version: &str,
     version_regex: &Regex,
     download_path: &PathBuf,
     loading_animation: &LoadingAnimation,
@@ -148,6 +149,7 @@ async fn update_package(
                     client,
                     download_path,
                     loading_animation,
+                    version,
                     version_regex,
                     startmenu_folder,
                     user_uninstall_reg_key,
@@ -267,7 +269,10 @@ pub fn run_package(db: &PackageDBManager, name: &str) -> Result<(), KnownErrors>
             }
             None => Ok(println!("Couldn't find the executable for {}", p.repo.name)),
         },
-        None => Ok(println!("Couldn't find a package named \"{}\"", name)),
+        None => Ok(println!(
+            "Couldn't find an installed package named \"{}\"",
+            name
+        )),
     }
 }
 

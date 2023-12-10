@@ -45,8 +45,7 @@ impl Package {
         }
     }
     pub fn installation_folder_str(&self) -> String {
-        self
-            .install_info
+        self.install_info
             .installation_folder
             .as_ref()
             .map(|f| f.display().to_string())
@@ -69,16 +68,24 @@ impl Package {
         client: &Client,
         path: &PathBuf,
         loading_animation: &LoadingAnimation,
+        version: &str,
         version_regex: &Regex,
         startmenu_folder: &PathBuf,
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
     ) -> Result<Option<Package>, RequestIoContentLengthError> {
-        let installer = self
-            .repo
-            .get_latest_installer(client, version_regex)
-            .await?
-            .filter(|i| i.version != self.version);
+        let installer = match version {
+            "latest" => self
+                .repo
+                .get_latest_installer(client, version_regex)
+                .await?
+                .filter(|i| i.version != self.version),
+            version => self
+                .repo
+                .get_installer(client, version, version_regex)
+                .await?
+                .filter(|i| i.version != self.version),
+        };
         match installer {
             Some(i) => {
                 println!("Updating from {} --> {}", self.version, i.version);
@@ -138,6 +145,7 @@ mod tests {
                 &client(),
                 &package_installers_dir(),
                 &loading_animation(),
+                "latest",
                 &Repo::generate_version_regex(),
                 &Installer::generate_startmenu_path(),
                 &Installer::generate_user_uninstall_reg_key().expect("Ok(user_uninstall_reg_key)"),
