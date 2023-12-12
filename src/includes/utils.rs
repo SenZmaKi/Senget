@@ -12,6 +12,8 @@ pub const APP_NAME: &str = "Senget";
 pub const APP_NAME_LOWER: &str = "senget";
 pub const VERSION: &str = "1.0.0";
 pub const DESCRIPTION: &str = "Github package manager";
+// TODO set to false on deployment
+pub const DEBUG: bool = true;
 
 
 pub struct LoadingAnimation {

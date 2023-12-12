@@ -56,7 +56,27 @@ impl Package {
             Some(us) => {
                 let join_handle =
                     loading_animation.start(format!("Uninstalling {}.. .", self.repo.name));
-                Command::new(us).output()?;
+                // ""C:\Users\PC\AppData\Local\Programs\Miru\Uninstall Miru.exe" /currentuser /s"
+                let mut split = us.split("\" ");
+                // "C:\Users\PC\AppData\Local\Programs\Miru\Uninstall Miru.exe"
+                let program = split.next().unwrap_or_default().replace("\"", "");
+                println!("{}", program);
+                // "/currentuser /S"
+                let args_string = split.next().unwrap_or_default();
+                // ["/currentuser", "/S"]
+                let args = args_string.split(" - ");
+                // 🤓 "Umm actually if you use a regex it'll be faster and more readable", FUCK OFF!!!
+                if let Err(err) = Command::new(program).args(args).output() {
+                    // TODO: Change this to err.kind() == io::Error::ErrorKind::InvalidFileName when it becomes stable
+                    if err.to_string().contains(
+                        "The filename, directory name, or volume label syntax is incorrect.",
+                    ) {
+                        println!("{}", 1);
+                        // We assume that if the command didn't work then the user previously uninstalled it themselves
+                        loading_animation.stop(join_handle);
+                        return Ok(false);
+                    }
+                }
                 loading_animation.stop(join_handle);
                 Ok(true)
             }

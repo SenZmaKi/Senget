@@ -21,6 +21,8 @@ use crate::includes::{
     utils::LoadingAnimation,
 };
 
+use super::utils::DEBUG;
+
 const SILENT_INSTALL_ARGS: [&str; 3] = [
     "/VERYSILENT", // Inno Setup
     "/qn",         // MSI
@@ -63,7 +65,6 @@ impl Installer {
         client: &reqwest::Client,
     ) -> Result<PathBuf, RequestIoContentLengthError> {
         let path = path.join(&self.file_title);
-        println!("{}", path.display().to_string());
         if path.is_file() {
             println!(
                 "Using cached installer at: {}",
@@ -95,7 +96,8 @@ impl Installer {
             progress_bar.set_position(progress);
         }
         progress_bar.finish_with_message("Download complete");
-        println!(); // To go out of the line containing the progress bar
+        // So that further output is after the progressbar
+        println!();
         Ok(path)
     }
 
@@ -245,7 +247,9 @@ impl Installer {
         Installer::fetch_shortcut_files(&mut shortcut_files_before, startmenu_folder, true)?;
 
         Installer::run_installation(installer_path)?;
-        fs::remove_file(installer_path)?;
+        if !DEBUG {
+            fs::remove_file(installer_path)?;
+        }
 
         let executable_path = self
             .statically_generate_package_shortcut(startmenu_folder)

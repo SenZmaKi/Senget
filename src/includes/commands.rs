@@ -150,10 +150,15 @@ pub fn uninstall_package(
 ) -> Result<(), KnownErrors> {
     match db.find_package(name)? {
         Some(package) => {
-            package.uninstall(loading_animation)?;
+            let uninstalled = package.uninstall(loading_animation)?;
             let name = package.repo.name.to_owned();
             db.remove_package(&package.to_owned())?;
-            Ok(println!("Successfully uninstalled {}.", name))
+            match uninstalled {
+                true => Ok(println!("Successfully uninstalled {}.", name)),
+                false => Ok(eprintln!(
+                    "Uninstallation failed but it was removed from the package database"
+                )),
+            }
         }
         None => Ok(eprint_no_installed_package_found(name)),
     }
