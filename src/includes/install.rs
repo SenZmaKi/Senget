@@ -2,7 +2,6 @@
 
 use indicatif::{ProgressBar, ProgressStyle};
 use lnk::ShellLink;
-use reqwest::Request;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
@@ -32,13 +31,18 @@ const SILENT_INSTALL_ARGS: [&str; 3] = [
 pub struct Installer {
     package_name: String,
     file_title: String,
-    file_extension: String,
     pub url: String,
     pub version: String,
 }
 impl Installer {
     const UNINSTALL_KEY_STR: &str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
-
+    pub fn generate_installer_download_path() -> Result<PathBuf, io::Error> {
+        let install_download_path = PathBuf::from("Package-Installers");
+        if !install_download_path.is_dir() {
+            fs::create_dir(&install_download_path)?;
+        }
+        Ok(install_download_path)
+    }
     pub fn new(
         package_name: String,
         file_extension: String,
@@ -49,7 +53,6 @@ impl Installer {
         Installer {
             package_name,
             file_title,
-            file_extension,
             url,
             version,
         }
@@ -84,6 +87,7 @@ impl Installer {
             progress_bar.set_position(progress);
         }
         progress_bar.finish_with_message("Download complete");
+        println!(); // To go out of the line containing the progress bar
         Ok(path)
     }
 
@@ -245,8 +249,9 @@ impl Installer {
             })
             .and_then(|path| Installer::find_shorcut_target(&path));
 
-        let installation_folder =
-            executable_path.as_ref().and_then(|ep| ep.parent().map(|p| PathBuf::from(p)));
+        let installation_folder = executable_path
+            .as_ref()
+            .and_then(|ep| ep.parent().map(|p| PathBuf::from(p)));
 
         let uninstall_command = Installer::fetch_uninstall_command(
             &user_reg_keys_before,

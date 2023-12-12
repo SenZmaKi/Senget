@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    io::{self, Read, Write},
+    io::Write,
     path::PathBuf,
     process::Command,
 };
@@ -11,17 +11,19 @@ use winreg::RegKey;
 
 use crate::includes::{
     database::PackageDBManager,
-    error::print_error_and_exit,
-    error::KnownErrors,
+    error::{print_error, KnownErrors},
     github::{self, api::Repo},
-    package::{self, Package},
-    utils::LoadingAnimation,
+    install::Installer,
+    package::Package,
+    utils::{LoadingAnimation, APP_NAME_LOWER},
 };
 
-use super::{install::Installer, utils::APP_NAME_LOWER};
-
-pub fn eprint_no_package_found(name: &str) {
+fn eprint_no_installed_package_found(name: &str) {
     eprintln!("No installed package named \"{}\" found.", name);
+}
+
+fn eprint_no_package_found(name: &str) {
+    eprintln!("No package named \"{}\" found.", name);
 }
 
 async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, KnownErrors> {
@@ -57,6 +59,20 @@ pub async fn download_installer(
     version: &str,
     version_regex: &Regex,
     download_path: &PathBuf,
+) -> Result<(), KnownErrors> {
+    if let Some((_, _, installer_path)) =
+        internal_download_installer(name, client, version, version_regex, download_path).await?
+    {
+        println!("Downloaded at {}", installer_path.display().to_string());
+    }
+    Ok(())
+}
+async fn internal_download_installer(
+    name: &str,
+    client: &Client,
+    version: &str,
+    version_regex: &Regex,
+    download_path: &PathBuf,
 ) -> Result<Option<(Repo, Installer, PathBuf)>, KnownErrors> {
     match find_repo(name, client).await? {
         Some(repo) => {
@@ -70,7 +86,7 @@ pub async fn download_installer(
                     Ok(Some((repo, installer, installer_path)))
                 }
                 None => {
-                    eprint_no_package_found(name);
+                    eprint_no_installed_package_found(name);
                     Ok(None)
                 }
             }
@@ -87,7 +103,7 @@ pub async fn install_package(
     client: &Client,
     version: &str,
     version_regex: &Regex,
-    download_path: &PathBuf,
+    installer_download_path: &PathBuf,
     loading_animation: &LoadingAnimation,
     startmenu_folder: &PathBuf,
     user_uninstall_reg_key: &RegKey,
@@ -99,7 +115,15 @@ pub async fn install_package(
             Ok(eprintln!("Package is already installed."))
         }
         None => {
-            match download_installer(name, client, version, version_regex, download_path).await? {
+            match internal_download_installer(
+                name,
+                client,
+                version,
+                version_regex,
+                installer_download_path,
+            )
+            .await?
+            {
                 Some((repo, installer, installer_path)) => {
                     let install_info = installer.install(
                         &installer_path,
@@ -119,7 +143,7 @@ pub async fn install_package(
     }
 }
 
-fn uninstall_package(
+pub fn uninstall_package(
     db: &mut PackageDBManager,
     name: &str,
     loading_animation: &LoadingAnimation,
@@ -127,20 +151,21 @@ fn uninstall_package(
     match db.find_package(name)? {
         Some(package) => {
             package.uninstall(loading_animation)?;
+            let name = package.repo.name.to_owned();
             db.remove_package(&package.to_owned())?;
-            Ok(println!("Successfully uninstalled {}.", ""))
+            Ok(println!("Successfully uninstalled {}.", name))
         }
-        None => Ok(eprint_no_package_found(name)),
+        None => Ok(eprint_no_installed_package_found(name)),
     }
 }
 
-async fn update_package(
+pub async fn update_package(
     db: &mut PackageDBManager,
     name: &str,
     client: &Client,
     version: &str,
     version_regex: &Regex,
-    download_path: &PathBuf,
+    installer_download_path: &PathBuf,
     loading_animation: &LoadingAnimation,
     startmenu_folder: &PathBuf,
     user_uninstall_reg_key: &RegKey,
@@ -151,7 +176,7 @@ async fn update_package(
             match old_package
                 .update(
                     client,
-                    download_path,
+                    installer_download_path,
                     loading_animation,
                     version,
                     version_regex,
@@ -171,16 +196,19 @@ async fn update_package(
                 )),
             }
         }
-        None => Ok(eprint_no_package_found(name)),
+        None => Ok(eprint_no_installed_package_found(name)),
     }
 }
 
-fn list_packages(db: &PackageDBManager) -> () {
+pub fn list_packages(db: &PackageDBManager) -> () {
     let mut name_width = "Name".len();
     let mut version_width = "Version".len();
     let mut installation_folder_width = "Installation Folder".len();
-    let compare_len = |prev_max_len: usize, curr_str: &str| curr_str.len().max(curr_str.len());
+    let compare_len = |prev_max_len: usize, curr_str: &str| curr_str.len().max(prev_max_len);
     let packages = db.fetch_all_packages();
+    if packages.is_empty() {
+        return println!("No packages installed");
+    }
     for p in packages {
         name_width = compare_len(name_width, &p.repo.name);
         version_width = compare_len(version_width, &p.version);
@@ -219,28 +247,66 @@ pub async fn search_repos(query: &str, client: &Client) -> Result<(), KnownError
     Ok(print!("{}", final_str))
 }
 
+pub fn exported_packages_file_name() -> String {
+    format!("{}-packages.txt", APP_NAME_LOWER)
+}
 pub fn export_packages(
     db: &PackageDBManager,
     export_folder_path: &PathBuf,
-) -> Result<PathBuf, KnownErrors> {
+) -> Result<(), KnownErrors> {
     let mut final_str = "".to_owned();
     for p in db.fetch_all_packages() {
         let p_entry = format!("{}=={}\n", &p.repo.full_name, &p.version);
         final_str.push_str(&p_entry);
     }
-    let export_file_path = export_folder_path.join(format!("{}-packages.txt", APP_NAME_LOWER));
+    let export_file_path = export_folder_path.join(exported_packages_file_name());
     let mut f = File::create(&export_file_path)?;
     f.write_all(final_str.as_bytes())?;
-    Ok(export_file_path)
+    Ok(println!(
+        "Exported at {}",
+        export_file_path.display().to_string()
+    ))
 }
 
-pub async fn extract_package_name_and_version(
+pub async fn import_packages(
+    export_file_path: &PathBuf,
+    ignore_versions: bool,
+    db: &mut PackageDBManager,
+    client: &Client,
+    version_regex: &Regex,
+    installer_download_path: &PathBuf,
+    loading_animation: &LoadingAnimation,
+    startmenu_folder: &PathBuf,
+    user_uninstall_reg_key: &RegKey,
+    machine_uninstall_reg_key: &RegKey,
+) -> Result<(), KnownErrors> {
+    for (name, version) in extract_package_name_and_version(export_file_path, ignore_versions)? {
+        if let Err(err) = install_package(
+            db,
+            &name,
+            client,
+            &version,
+            version_regex,
+            installer_download_path,
+            loading_animation,
+            startmenu_folder,
+            user_uninstall_reg_key,
+            machine_uninstall_reg_key,
+        )
+        .await
+        {
+            print_error(err);
+        }
+    }
+    Ok(())
+}
+
+fn extract_package_name_and_version(
     export_file_path: &PathBuf,
     ignore_versions: bool,
 ) -> Result<Vec<(String, String)>, KnownErrors> {
     let mut name_and_version: Vec<(String, String)> = Vec::new();
-    for line in tokio::fs::read_to_string(export_file_path)
-        .await?
+    for line in fs::read_to_string(export_file_path)?
         .lines()
         .into_iter()
         .filter(|l| !l.is_empty())
@@ -273,7 +339,7 @@ pub fn run_package(db: &PackageDBManager, name: &str) -> Result<(), KnownErrors>
             }
             None => Ok(eprintln!("No executable found for {}.", p.repo.name)),
         },
-        None => Ok(eprint_no_package_found(name)),
+        None => Ok(eprint_no_installed_package_found(name)),
     }
 }
 

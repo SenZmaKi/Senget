@@ -10,11 +10,10 @@ use std::{
 
 pub const APP_NAME: &str = "Senget";
 pub const APP_NAME_LOWER: &str = "senget";
+pub const VERSION: &str = "1.0.0";
+pub const DESCRIPTION: &str = "Github package manager";
 
 
-pub fn fatal_error(err: &(dyn std::error::Error + 'static)) -> ! {
-    panic!("Fatal Error: {}", err);
-}
 pub struct LoadingAnimation {
     stop_flag: Arc<(Mutex<bool>, Condvar)>,
 }
@@ -58,19 +57,6 @@ pub fn setup_client() -> Result<Client, reqwest::Error> {
         header::HeaderValue::from_static(APP_NAME),
     );
     return Ok(Client::builder().default_headers(headers).build()?);
-}
-
-pub fn strip_string(input: &str) -> String {
-    input
-        .chars()
-        .filter(|c| c.is_alphabetic())
-        .collect::<String>()
-        .to_lowercase()
-}
-
-
-pub fn fuzzy_compare(main: &str, comp: &str) -> bool {
-    strip_string(main).contains(comp)
 }
 
 #[cfg(test)]

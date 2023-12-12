@@ -7,3 +7,4 @@ pub mod database;
 pub mod commands;
 pub mod error;
 pub mod test_utils;
+pub mod cli;

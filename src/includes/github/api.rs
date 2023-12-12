@@ -1,18 +1,16 @@
 //! Interacts with the github api
-use core::fmt;
 
 use crate::{
     github::serde_json_types::{
-        AssetsResponseJson, ReleasesResponseJson, RepoResponseJson, SearchResponseJson,
+        AssetsResponseJson, ReleaseResponseJson, ReleasesResponseJson, RepoResponseJson,
+        SearchResponseJson,
     },
     includes::install::Installer,
 };
+use core::fmt;
 use regex::{self, Regex};
 use serde::{Deserialize, Serialize};
 
-use super::serde_json_types::ReleaseResponseJson;
-
-const GITHUB_HOME_URL: &str = "https://github.com";
 const GITHUB_API_ENTRY_POINT: &str = "https://api.github.com";
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,11 +102,14 @@ impl Repo {
         let mut file_extension = "".to_owned();
         let mut url = "".to_owned();
         for asset in assets {
-            let name = asset.name;
-            let inner_file_extension = name.split(".").last().unwrap_or_default();
+            let name_lower = asset.name.to_lowercase();
+            let inner_file_extension = name_lower.split(".").last().unwrap_or_default();
             if inner_file_extension == "exe" || inner_file_extension == "msi" {
                 file_extension = inner_file_extension.to_owned();
                 url = asset.browser_download_url;
+                if inner_file_extension == "msi" || name_lower.contains("installer") || name_lower.contains("setup") {
+                    break;
+                }
             }
         }
         if url == "" {
@@ -171,7 +172,9 @@ pub fn extract_repo(repo_response_json: RepoResponseJson) -> Repo {
         repo_response_json.html_url,
         repo_response_json.description,
         repo_response_json.language,
-        repo_response_json.license.map(|l| l.name)
+        repo_response_json
+            .license
+            .map(|l| l.name.unwrap_or_default()),
     )
 }
 pub async fn search(query: &str, client: &reqwest::Client) -> Result<Vec<Repo>, reqwest::Error> {
@@ -189,7 +192,7 @@ pub mod tests {
 
     use crate::includes::{
         github::api::{search, Repo},
-        test_utils::{client, senpwai_repo, hatt_repo},
+        test_utils::{client, hatt_repo, senpwai_repo},
     };
 
     fn repos() -> Vec<Repo> {

@@ -66,7 +66,7 @@ impl Package {
     pub async fn update(
         &self,
         client: &Client,
-        path: &PathBuf,
+        installer_download_path: &PathBuf,
         loading_animation: &LoadingAnimation,
         version: &str,
         version_regex: &Regex,
@@ -89,7 +89,7 @@ impl Package {
         match installer {
             Some(i) => {
                 println!("Updating from {} --> {}", self.version, i.version);
-                let p = i.download(path, client).await?;
+                let p = i.download(installer_download_path, client).await?;
                 /* Generation of InstallInfo is pretty wonky, for the execuable_path it checks for
                 new shorcut files after installation and for uninstall_command it checks for new registry entries.
                 For these reasons there won't probably be any new shortcut files/registry entries if it's an update cause

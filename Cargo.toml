@@ -1,5 +1,5 @@
 [package]
-name = "Senget"
+name = "senget"
 version = "0.1.0"
 edition = "2021"
 
@@ -16,4 +16,5 @@ winreg = "0.52.0"
 lnk = "0.5.1"
 spinners = "4.1.1"
 tinydb = "1"
+clap = {version = "4.4.11"}
 

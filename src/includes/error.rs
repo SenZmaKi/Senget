@@ -94,7 +94,6 @@ impl From<RequestIoContentLengthError> for KnownErrors {
         KnownErrors::RequestIoContentLengthError(error)
     }
 }
-pub fn print_error_and_exit(err: KnownErrors) -> ! {
-    println!("{} encountered the an error:\n{:?}", APP_NAME, err);
-    std::process::exit(69)
+pub fn print_error(err: KnownErrors) {
+    eprintln!("{:?}", err);
 }

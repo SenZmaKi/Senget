@@ -10,11 +10,11 @@ pub struct PackageDBManager {
 
 impl PackageDBManager {
     pub fn get_db_file_path() -> Result<PathBuf, io::Error> {
-        let db_folder = PathBuf::from("Database");
+        let db_folder = PathBuf::from("Package-Database");
         if !db_folder.is_dir() {
             fs::create_dir(&db_folder)?;
         }
-        Ok(db_folder.join("Packages.tinydb").canonicalize()?)
+        Ok(db_folder.join("packages.tinydb"))
     }
     pub fn new(save_path: &PathBuf) -> Result<PackageDBManager, DatabaseError> {
         let db = match save_path.is_file() {

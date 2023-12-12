@@ -120,11 +120,11 @@ pub struct Owner {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct License {
-    pub key: String,
-    pub name: String,
-    pub spdx_id: String,
-    pub url: String,
-    pub node_id: String,
+    pub key: Option<String>,
+    pub name: Option<String>,
+    pub spdx_id: Option<String>,
+    pub url: Option<String>,
+    pub node_id: Option<String>,
 }
 
 pub type ReleasesResponseJson = Vec<ReleaseResponseJson>;
