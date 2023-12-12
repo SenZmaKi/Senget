@@ -5,13 +5,20 @@ use std::fmt;
 use std::io;
 use tinydb;
 
-use crate::utils::APP_NAME;
-#[derive(Debug)]
 pub struct ContentLengthError;
 
-impl fmt::Display for ContentLengthError {
+impl fmt::Debug for ContentLengthError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Invalid content length")
+        write!(f, "ContentLengthError: Invalid content length")
+    }
+}
+pub struct PrivilegeError;
+impl fmt::Debug for PrivilegeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "PrivilegeError: Rerun the command in an admin shell, e.g., if you're using Command Prompt, run it as an Administrator"
+        )
     }
 }
 
@@ -20,6 +27,7 @@ pub enum KnownErrors {
     RequestError(reqwest::Error),
     IoError(io::Error),
     DatabaseError(tinydb::error::DatabaseError),
+    PrivilegeError(PrivilegeError),
     RequestIoError(RequestIoError),
     RequestIoContentLengthError(RequestIoContentLengthError),
 }
@@ -48,7 +56,6 @@ impl From<reqwest::Error> for RequestIoError {
     }
 }
 
-
 impl From<ContentLengthError> for RequestIoContentLengthError {
     fn from(error: ContentLengthError) -> Self {
         RequestIoContentLengthError::ContentLengthError(error)
@@ -70,6 +77,12 @@ impl From<reqwest::Error> for RequestIoContentLengthError {
 impl From<reqwest::Error> for KnownErrors {
     fn from(error: reqwest::Error) -> Self {
         KnownErrors::RequestError(error)
+    }
+}
+
+impl From<PrivilegeError> for KnownErrors {
+    fn from(error: PrivilegeError) -> Self {
+        KnownErrors::PrivilegeError(error)
     }
 }
 impl From<io::Error> for KnownErrors {
@@ -94,6 +107,15 @@ impl From<RequestIoContentLengthError> for KnownErrors {
         KnownErrors::RequestIoContentLengthError(error)
     }
 }
+fn handle_privilege_error(err: KnownErrors) -> KnownErrors {
+    let str_error = format!("{:?}", err);
+    if str_error.contains("The requested operation requires elevation.") {
+        return PrivilegeError.into();
+    };
+    err
+}
+
 pub fn print_error(err: KnownErrors) {
-    eprintln!("{:?}", err);
+    let err = handle_privilege_error(err);
+    eprintln!("\n{:?}", err);
 }

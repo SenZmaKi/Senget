@@ -49,7 +49,7 @@ impl Installer {
         url: String,
         version: String,
     ) -> Installer {
-        let file_title = format!("{}-Installer.{}", package_name, file_extension);
+        let file_title = format!("{}-{}-Installer.{}", package_name, version, file_extension);
         Installer {
             package_name,
             file_title,
@@ -63,6 +63,14 @@ impl Installer {
         client: &reqwest::Client,
     ) -> Result<PathBuf, RequestIoContentLengthError> {
         let path = path.join(&self.file_title);
+        println!("{}", path.display().to_string());
+        if path.is_file() {
+            println!(
+                "Using cached installer at: {}",
+                path.canonicalize()?.display()
+            );
+            return Ok(path);
+        }
         let mut file = tokio::fs::File::create(&path).await?;
         let mut response = client.get(&self.url).send().await?;
         let progress_bar = ProgressBar::new(
