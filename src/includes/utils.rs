@@ -12,6 +12,7 @@ pub const APP_NAME: &str = "Senget";
 pub const APP_NAME_LOWER: &str = "senget";
 pub const VERSION: &str = "1.0.0";
 pub const DESCRIPTION: &str = "Github package manager";
+pub const MSI_EXEC: &str = "MsiExec.exe";
 // TODO set to false on deployment
 pub const DEBUG: bool = true;
 

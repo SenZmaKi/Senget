@@ -9,10 +9,12 @@ use core::fmt;
 use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::{io, path::PathBuf, process::Command};
+use std::{io, path::PathBuf, process::Command, str::Split};
 use winreg::RegKey;
 
 use crate::includes::error::RequestIoContentLengthError;
+
+use super::utils::MSI_EXEC;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
@@ -51,21 +53,36 @@ impl Package {
             .map(|f| f.display().to_string())
             .unwrap_or_default()
     }
-    pub fn uninstall(&self, loading_animation: &LoadingAnimation) -> Result<bool, io::Error> {
-        match &self.install_info.uninstall_command {
-            Some(us) => {
-                let join_handle =
-                    loading_animation.start(format!("Uninstalling {}.. .", self.repo.name));
+
+    // 🤓 "Umm actually if you use a regex it'll be faster and more readable", FUCK OFF!!!
+    fn extract_program_and_args(uninstall_command: &str) -> (String, Vec<&str>) {
+        match uninstall_command.contains(MSI_EXEC) {
+            true => {
+                let msi = &format!("{} ", MSI_EXEC);
+                let mut split = uninstall_command.split(msi);
+                let _ = split.next(); // Ignore the first value since it's just MSI_EXEC
+                (MSI_EXEC.to_owned(), split.collect::<Vec<&str>>())
+            }
+            false => {
                 // ""C:\Users\PC\AppData\Local\Programs\Miru\Uninstall Miru.exe" /currentuser /s"
-                let mut split = us.split("\" ");
+                let mut split = uninstall_command.split("\" ");
                 // "C:\Users\PC\AppData\Local\Programs\Miru\Uninstall Miru.exe"
                 let program = split.next().unwrap_or_default().replace("\"", "");
                 println!("{}", program);
                 // "/currentuser /S"
                 let args_string = split.next().unwrap_or_default();
                 // ["/currentuser", "/S"]
-                let args = args_string.split(" - ");
-                // 🤓 "Umm actually if you use a regex it'll be faster and more readable", FUCK OFF!!!
+                let args = args_string.split(" - ").collect::<Vec<&str>>();
+                (program, args)
+            }
+        }
+    }
+    pub fn uninstall(&self, loading_animation: &LoadingAnimation) -> Result<bool, io::Error> {
+        match &self.install_info.uninstall_command {
+            Some(us) => {
+                let join_handle =
+                    loading_animation.start(format!("Uninstalling {}.. .", self.repo.name));
+                let (program, args) = Package::extract_program_and_args(us);
                 if let Err(err) = Command::new(program).args(args).output() {
                     // TODO: Change this to err.kind() == io::Error::ErrorKind::InvalidFileName when it becomes stable
                     if err.to_string().contains(

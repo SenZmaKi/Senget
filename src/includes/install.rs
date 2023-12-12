@@ -21,18 +21,17 @@ use crate::includes::{
     utils::LoadingAnimation,
 };
 
-use super::utils::DEBUG;
+use super::utils::{DEBUG, MSI_EXEC};
 
-const SILENT_INSTALL_ARGS: [&str; 3] = [
-    "/VERYSILENT", // Inno Setup
-    "/qn",         // MSI
-    "/S",          // NSIS
-];
+const MSI_SILENT_ARG: &str = "/qn";
+const INNO_SILENT_ARG: &str = "/VERYSILENT";
+const NSIS_SILENT_ARG: &str = "/S";
 
 #[derive(Debug, Default, Clone)]
 pub struct Installer {
     package_name: String,
     file_title: String,
+    pub file_extension: String,
     pub url: String,
     pub version: String,
 }
@@ -55,6 +54,7 @@ impl Installer {
         Installer {
             package_name,
             file_title,
+            file_extension,
             url,
             version,
         }
@@ -149,8 +149,17 @@ impl Installer {
         Ok(subkeys)
     }
 
-    fn run_installation(file_path: &PathBuf) -> Result<(), std::io::Error> {
-        Command::new(file_path).args(SILENT_INSTALL_ARGS).output()?;
+    fn run_installation(&self, file_path: &PathBuf) -> Result<(), std::io::Error> {
+        match self.file_extension == "msi" {
+            true => Command::new(MSI_EXEC)
+                .arg("/i")
+                .arg(file_path)
+                .arg(MSI_SILENT_ARG)
+                .output()?,
+            false => Command::new(file_path)
+                .args([INNO_SILENT_ARG, NSIS_SILENT_ARG])
+                .output()?,
+        };
         Ok(())
     }
 
@@ -246,7 +255,7 @@ impl Installer {
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
         Installer::fetch_shortcut_files(&mut shortcut_files_before, startmenu_folder, true)?;
 
-        Installer::run_installation(installer_path)?;
+        self.run_installation(installer_path)?;
         if !DEBUG {
             fs::remove_file(installer_path)?;
         }
