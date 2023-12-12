@@ -89,7 +89,7 @@ pub async fn match_commands(
     installer_download_path: &PathBuf,
     version_regex: &Regex,
     loading_animation: &LoadingAnimation,
-    startmenu_folder: &PathBuf,
+    startmenu_folders: &(PathBuf, PathBuf),
     user_uninstall_reg_key: &RegKey,
     machine_uninstall_reg_key: &RegKey,
 ) -> Result<(), KnownErrors> {
@@ -129,7 +129,7 @@ pub async fn match_commands(
                 version_regex,
                 installer_download_path,
                 loading_animation,
-                startmenu_folder,
+                startmenu_folders,
                 user_uninstall_reg_key,
                 machine_uninstall_reg_key,
             )
@@ -144,7 +144,7 @@ pub async fn match_commands(
                 version_regex,
                 installer_download_path,
                 loading_animation,
-                startmenu_folder,
+                startmenu_folders,
                 user_uninstall_reg_key,
                 machine_uninstall_reg_key,
             )
@@ -159,7 +159,7 @@ pub async fn match_commands(
                 version_regex,
                 installer_download_path,
                 loading_animation,
-                startmenu_folder,
+                startmenu_folders,
                 user_uninstall_reg_key,
                 machine_uninstall_reg_key,
             )

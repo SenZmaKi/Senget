@@ -7,7 +7,7 @@ use std::{
     collections::HashSet,
     env, fs,
     io::{self, Error as IOError},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
 };
 use tokio::io::AsyncWriteExt;
@@ -26,6 +26,7 @@ use super::utils::{DEBUG, MSI_EXEC};
 const MSI_SILENT_ARG: &str = "/qn";
 const INNO_SILENT_ARG: &str = "/VERYSILENT";
 const NSIS_SILENT_ARG: &str = "/S";
+const STARTMENU_FOLDER_ENDPOINT: &str = "\\Microsoft\\Windows\\Start Menu\\Programs";
 
 #[derive(Debug, Default, Clone)]
 pub struct Installer {
@@ -109,12 +110,16 @@ impl Installer {
         Ok(RegKey::predef(HKEY_CURRENT_USER).open_subkey(Installer::UNINSTALL_KEY_STR)?)
     }
 
-    pub fn generate_startmenu_path() -> PathBuf {
-        let appdata_path = env::var("APPDATA").expect("APPDATA environment variable to be set");
-        let path = appdata_path + "\\Microsoft\\Windows\\Start Menu\\Programs";
-        PathBuf::from(path)
+    pub fn generate_startmenu_paths() -> (PathBuf, PathBuf) {
+        let gen = |envvar: &str| {
+            PathBuf::from(
+                env::var(envvar).expect(&format!("{} environment variable to be set", envvar))
+                    + STARTMENU_FOLDER_ENDPOINT,
+            )
+        };
+        (gen("APPDATA"), gen("PROGRAMDATA"))
     }
-    fn fetch_shortcut_files(
+    fn fetch_shortcut_files_and_dirs(
         files: &mut HashSet<PathBuf>,
         startmenu_folder: &PathBuf,
         check_inner_folders: bool,
@@ -127,7 +132,7 @@ impl Installer {
                     if e.is_file() && e.ends_with(".lnk") {
                         files.insert(e);
                     } else if check_inner_folders && e.is_dir() {
-                        Installer::fetch_shortcut_files(files, startmenu_folder, false)?;
+                        Installer::fetch_shortcut_files_and_dirs(files, startmenu_folder, false)?;
                     }
                 }
                 Err(err) => return Err(err),
@@ -164,12 +169,18 @@ impl Installer {
     }
 
     fn statically_generate_package_shortcut(&self, startmenu_folder: &PathBuf) -> Option<PathBuf> {
-        let shortcut_path = startmenu_folder.join(format!("{}.lnk", self.package_name));
+        let shortcut_file_name = format!("{}.lnk", &self.package_name);
+        let shortcut_path = startmenu_folder.join(&shortcut_file_name);
         if shortcut_path.is_file() {
-            Some(shortcut_path)
-        } else {
-            None
+            return Some(shortcut_path);
         }
+        let shortcut_path = startmenu_folder
+            .join(&self.package_name)
+            .join(shortcut_file_name);
+        if shortcut_path.is_file() {
+            return Some(shortcut_path);
+        }
+        None
     }
 
     fn find_shorcut_target(shortcut_path: &PathBuf) -> Option<PathBuf> {
@@ -183,7 +194,8 @@ impl Installer {
         startmenu_folder: &PathBuf,
     ) -> Option<PathBuf> {
         let mut shortcut_files_after = HashSet::<PathBuf>::new();
-        Installer::fetch_shortcut_files(&mut shortcut_files_after, startmenu_folder, true).ok()?;
+        Installer::fetch_shortcut_files_and_dirs(&mut shortcut_files_after, startmenu_folder, true)
+            .ok()?;
 
         let new_files = shortcut_files_after
             .difference(shortcut_files_before)
@@ -245,7 +257,7 @@ impl Installer {
         &self,
         installer_path: &PathBuf,
         loading_animation: &LoadingAnimation,
-        startmenu_folder: &PathBuf,
+        startmenu_folders: &(PathBuf, PathBuf),
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
     ) -> Result<InstallInfo, IOError> {
@@ -253,7 +265,16 @@ impl Installer {
         let user_reg_keys_before = Installer::fetch_reg_keys(user_uninstall_reg_key)?;
         let machine_reg_keys_before = Installer::fetch_reg_keys(machine_uninstall_reg_key)?;
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
-        Installer::fetch_shortcut_files(&mut shortcut_files_before, startmenu_folder, true)?;
+        Installer::fetch_shortcut_files_and_dirs(
+            &mut shortcut_files_before,
+            &startmenu_folders.0,
+            true,
+        )?;
+        Installer::fetch_shortcut_files_and_dirs(
+            &mut shortcut_files_before,
+            &startmenu_folders.1,
+            true,
+        )?;
 
         self.run_installation(installer_path)?;
         if !DEBUG {
@@ -261,12 +282,19 @@ impl Installer {
         }
 
         let executable_path = self
-            .statically_generate_package_shortcut(startmenu_folder)
+            .statically_generate_package_shortcut(&startmenu_folders.0)
+            .or_else(|| self.statically_generate_package_shortcut(&startmenu_folders.1))
             .or_else(|| {
                 Installer::dynamically_find_package_shortcut(
                     &shortcut_files_before,
-                    startmenu_folder,
+                    &startmenu_folders.0,
                 )
+                .or_else(|| {
+                    Installer::dynamically_find_package_shortcut(
+                        &shortcut_files_before,
+                        &startmenu_folders.1,
+                    )
+                })
             })
             .and_then(|path| Installer::find_shorcut_target(&path));
 
@@ -315,12 +343,11 @@ mod tests {
     #[test]
     fn test_installation() {
         let path = package_installers_dir().join("Senpwai-Installer.exe");
-        let startmenu_path = Installer::generate_startmenu_path();
         let install_info = senpwai_latest_installer()
             .install(
                 &path,
                 &loading_animation(),
-                &Installer::generate_startmenu_path(),
+                &&Installer::generate_startmenu_paths(),
                 &Installer::generate_user_uninstall_reg_key().expect("Ok(user_uninstall_reg_key)"),
                 &Installer::generate_machine_uninstall_reg_key()
                     .expect("Ok(machine_uninstall_reg_key)"),

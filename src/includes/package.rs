@@ -9,7 +9,7 @@ use core::fmt;
 use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::{io, path::PathBuf, process::Command, str::Split};
+use std::{io, path::PathBuf, process::Command};
 use winreg::RegKey;
 
 use crate::includes::error::RequestIoContentLengthError;
@@ -107,7 +107,7 @@ impl Package {
         loading_animation: &LoadingAnimation,
         version: &str,
         version_regex: &Regex,
-        startmenu_folder: &PathBuf,
+        startmenu_folders: &(PathBuf, PathBuf),
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
     ) -> Result<Option<Package>, RequestIoContentLengthError> {
@@ -134,7 +134,7 @@ impl Package {
                 let install_info = i.install(
                     &p,
                     loading_animation,
-                    startmenu_folder,
+                    startmenu_folders,
                     user_uninstall_reg_key,
                     machine_uninstall_reg_key,
                 )?;
@@ -184,7 +184,7 @@ mod tests {
                 &loading_animation(),
                 "latest",
                 &Repo::generate_version_regex(),
-                &Installer::generate_startmenu_path(),
+                &&Installer::generate_startmenu_paths(),
                 &Installer::generate_user_uninstall_reg_key().expect("Ok(user_uninstall_reg_key)"),
                 &Installer::generate_machine_uninstall_reg_key()
                     .expect("Ok(machine_uninstall_reg_key)"),

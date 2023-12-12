@@ -105,7 +105,7 @@ pub async fn install_package(
     version_regex: &Regex,
     installer_download_path: &PathBuf,
     loading_animation: &LoadingAnimation,
-    startmenu_folder: &PathBuf,
+    startmenu_folders: &(PathBuf, PathBuf),
     user_uninstall_reg_key: &RegKey,
     machine_uninstall_reg_key: &RegKey,
 ) -> Result<(), KnownErrors> {
@@ -128,7 +128,7 @@ pub async fn install_package(
                     let install_info = installer.install(
                         &installer_path,
                         loading_animation,
-                        startmenu_folder,
+                        startmenu_folders,
                         user_uninstall_reg_key,
                         machine_uninstall_reg_key,
                     )?;
@@ -172,7 +172,7 @@ pub async fn update_package(
     version_regex: &Regex,
     installer_download_path: &PathBuf,
     loading_animation: &LoadingAnimation,
-    startmenu_folder: &PathBuf,
+    startmenu_folders: &(PathBuf, PathBuf),
     user_uninstall_reg_key: &RegKey,
     machine_uninstall_reg_key: &RegKey,
 ) -> Result<(), KnownErrors> {
@@ -185,7 +185,7 @@ pub async fn update_package(
                     loading_animation,
                     version,
                     version_regex,
-                    startmenu_folder,
+                    startmenu_folders,
                     user_uninstall_reg_key,
                     machine_uninstall_reg_key,
                 )
@@ -281,7 +281,7 @@ pub async fn import_packages(
     version_regex: &Regex,
     installer_download_path: &PathBuf,
     loading_animation: &LoadingAnimation,
-    startmenu_folder: &PathBuf,
+    startmenu_folders: &(PathBuf, PathBuf),
     user_uninstall_reg_key: &RegKey,
     machine_uninstall_reg_key: &RegKey,
 ) -> Result<(), KnownErrors> {
@@ -294,7 +294,7 @@ pub async fn import_packages(
             version_regex,
             installer_download_path,
             loading_animation,
-            startmenu_folder,
+            startmenu_folders,
             user_uninstall_reg_key,
             machine_uninstall_reg_key,
         )

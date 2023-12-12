@@ -21,7 +21,7 @@ fn setup() -> Result<
         reqwest::Client,
         PathBuf,
         LoadingAnimation,
-        PathBuf,
+        (PathBuf, PathBuf),
         RegKey,
         RegKey,
     ),
@@ -34,7 +34,7 @@ fn setup() -> Result<
 
     let installer_download_path = Installer::generate_installer_download_path()?;
     let loading_animation = LoadingAnimation::new();
-    let startmenu_folder = Installer::generate_startmenu_path();
+    let startmenu_folders = Installer::generate_startmenu_paths();
     let user_uninstall_reg_key = Installer::generate_user_uninstall_reg_key()?;
     let machine_uninstall_reg_key = Installer::generate_machine_uninstall_reg_key()?;
 
@@ -44,7 +44,7 @@ fn setup() -> Result<
         client,
         installer_download_path,
         loading_animation,
-        startmenu_folder,
+        startmenu_folders,
         user_uninstall_reg_key,
         machine_uninstall_reg_key,
     ))
