@@ -1,4 +1,5 @@
 use std::{
+    fmt::format,
     fs::{self, File},
     io::{self, Write},
     path::PathBuf,
@@ -15,15 +16,19 @@ use crate::includes::{
     github::{self, api::Repo},
     install::Installer,
     package::Package,
-    utils::{LoadingAnimation, APP_NAME_LOWER, display_path},
+    utils::{display_path, LoadingAnimation, APP_NAME_LOWER},
 };
 
-fn eprint_no_installed_package_found(name: &str) {
+fn eprintln_no_installed_package_found(name: &str) {
     eprintln!("No installed package named \"{}\" found.", name);
 }
 
-fn eprint_no_package_found(name: &str) {
+fn eprintln_no_package_found(name: &str) {
     eprintln!("No package named \"{}\" found.", name);
+}
+
+fn eprintln_no_valid_installer(name: &str) {
+    eprintln!("No valid install for {} found", name);
 }
 
 async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, KnownErrors> {
@@ -48,7 +53,7 @@ pub async fn show_package(
         Some(package) => Ok(println!("{}", package)),
         None => match find_repo(name, client).await? {
             Some(repo) => Ok(println!("{}", repo)),
-            None => Ok(eprint_no_package_found(name)),
+            None => Ok(eprintln_no_package_found(name)),
         },
     }
 }
@@ -86,13 +91,13 @@ async fn internal_download_installer(
                     Ok(Some((repo, installer, installer_path)))
                 }
                 None => {
-                    eprint_no_installed_package_found(name);
+                    eprintln_no_valid_installer(name);
                     Ok(None)
                 }
             }
         }
         None => {
-            eprint_no_package_found(name);
+            eprintln_no_package_found(name);
             Ok(None)
         }
     }
@@ -160,7 +165,7 @@ pub fn uninstall_package(
                 )),
             }
         }
-        None => Ok(eprint_no_installed_package_found(name)),
+        None => Ok(eprintln_no_installed_package_found(name)),
     }
 }
 
@@ -179,29 +184,43 @@ pub async fn update_package(
     match db.find_package(name)? {
         Some(old_package) => {
             match old_package
-                .update(
-                    client,
-                    installer_download_path,
-                    loading_animation,
-                    version,
-                    version_regex,
-                    startmenu_folders,
-                    user_uninstall_reg_key,
-                    machine_uninstall_reg_key,
-                )
+                .get_installer(client, version, version_regex)
                 .await?
             {
-                Some(new_package) => {
-                    db.update_package(&old_package.to_owned(), new_package)?;
-                    Ok(())
-                }
-                None => Ok(eprintln!(
-                    "No valid installer found for {}.",
-                    old_package.repo.name
-                )),
+                Some(installer) => match old_package.version == installer.version {
+                    true => {
+                        match version == "latest" {
+                            true => {
+                                eprintln!("{} is already up to date", old_package.repo.name)
+                            }
+                            false => eprintln!(
+                                "{} v{} is already installed",
+                                old_package.repo.name, old_package.version
+                            ),
+                        };
+                        Ok(())
+                    }
+                    false => {
+                        println!("Updating from {} --> {}", old_package.version, installer.version);
+                        let new_package = old_package
+                            .update_version(
+                                client,
+                                installer,
+                                installer_download_path,
+                                loading_animation,
+                                startmenu_folders,
+                                user_uninstall_reg_key,
+                                machine_uninstall_reg_key,
+                            )
+                            .await?;
+                        db.update_package(&old_package.to_owned(), new_package)?;
+                        Ok(())
+                    }
+                },
+                None => Ok(eprintln_no_valid_installer(name)),
             }
         }
-        None => Ok(eprint_no_installed_package_found(name)),
+        None => Ok(eprintln_no_installed_package_found(name)),
     }
 }
 
@@ -345,7 +364,7 @@ pub fn run_package(db: &PackageDBManager, name: &str) -> Result<(), KnownErrors>
             }
             None => Ok(eprintln!("No executable found for {}.", p.repo.name)),
         },
-        None => Ok(eprint_no_installed_package_found(name)),
+        None => Ok(eprintln_no_installed_package_found(name)),
     }
 }
 

@@ -177,6 +177,9 @@ pub fn extract_repo(repo_response_json: RepoResponseJson) -> Repo {
             .map(|l| l.name.unwrap_or_default()),
     )
 }
+fn get() {
+
+}
 pub async fn search(query: &str, client: &reqwest::Client) -> Result<Vec<Repo>, reqwest::Error> {
     let url = format!("{GITHUB_API_ENTRY_POINT}/search/repositories?q={query}&per_page=10");
     let search_response_json: SearchResponseJson = client.get(url).send().await?.json().await?;

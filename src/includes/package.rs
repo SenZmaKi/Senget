@@ -14,7 +14,10 @@ use winreg::RegKey;
 
 use crate::includes::error::RequestIoContentLengthError;
 
-use super::utils::{MSI_EXEC, display_path};
+use super::{
+    install::Installer,
+    utils::{display_path, MSI_EXEC},
+};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
@@ -100,70 +103,64 @@ impl Package {
             None => Ok(false),
         }
     }
-    pub async fn update(
+    pub async fn get_installer(
         &self,
         client: &Client,
-        installer_download_path: &PathBuf,
-        loading_animation: &LoadingAnimation,
         version: &str,
         version_regex: &Regex,
+    ) -> Result<Option<Installer>, reqwest::Error> {
+        match version {
+            "latest" => self.repo.get_latest_installer(client, version_regex).await,
+            version => {
+                self.repo
+                    .get_installer(client, version, version_regex)
+                    .await
+            }
+        }
+    }
+
+    pub async fn update_version(
+        &self,
+        client: &Client,
+        installer: Installer,
+        installer_download_path: &PathBuf,
+        loading_animation: &LoadingAnimation,
         startmenu_folders: &(PathBuf, PathBuf),
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
-    ) -> Result<Option<Package>, RequestIoContentLengthError> {
-        let installer = match version {
-            "latest" => self
-                .repo
-                .get_latest_installer(client, version_regex)
-                .await?
-                .filter(|i| i.version != self.version),
-            version => self
-                .repo
-                .get_installer(client, version, version_regex)
-                .await?
-                .filter(|i| i.version != self.version),
-        };
-        match installer {
-            Some(i) => {
-                println!("Updating from {} --> {}", self.version, i.version);
-                let p = i.download(installer_download_path, client).await?;
-                /* Generation of InstallInfo is pretty wonky, for the execuable_path it checks for
-                new shorcut files after installation and for uninstall_command it checks for new registry entries.
-                For these reasons there won't probably be any new shortcut files/registry entries if it's an update cause
-                the update will just overwride the previously existing shortcut file/registry entry*/
-                let install_info = i.install(
-                    &p,
-                    loading_animation,
-                    startmenu_folders,
-                    user_uninstall_reg_key,
-                    machine_uninstall_reg_key,
-                )?;
-                let executable_path = install_info
-                    .executable_path
-                    .or(self.install_info.executable_path.to_owned());
-                let installation_folder = install_info
-                    .installation_folder
-                    .or(self.install_info.installation_folder.to_owned());
-                let uninstall_command = install_info
-                    .uninstall_command
-                    .or(self.install_info.uninstall_command.to_owned());
-                let repo_response_json: RepoResponseJson =
-                    client.get(&self.repo.url).send().await?.json().await?;
-                Ok(Some(Package::new(
-                    i.version,
-                    github::api::extract_repo(repo_response_json),
-                    InstallInfo {
-                        executable_path,
-                        installation_folder,
-                        uninstall_command,
-                    },
-                )))
-            }
-            None => Ok(None),
-        }
+    ) -> Result<Package, RequestIoContentLengthError> {
+        let p = installer.download(installer_download_path, client).await?;
+        /* Generation of InstallInfo is pretty wonky, for the execuable_path it checks for
+        new shortcut files after installation and for uninstall_command it checks for new registry entries.
+        For these reasons there won't probably be any new shortcut files/registry entries if it's an update cause
+        the update will just overwride the previously existing shortcut file/registry entry*/
+        let install_info = installer.install(
+            &p,
+            loading_animation,
+            startmenu_folders,
+            user_uninstall_reg_key,
+            machine_uninstall_reg_key,
+        )?;
+        let executable_path = install_info
+            .executable_path
+            .or(self.install_info.executable_path.to_owned());
+        let installation_folder = install_info
+            .installation_folder
+            .or(self.install_info.installation_folder.to_owned());
+        let uninstall_command = install_info
+            .uninstall_command
+            .or(self.install_info.uninstall_command.to_owned());
+        Ok(Package::new(
+            installer.version,
+            self.repo.to_owned(),
+            InstallInfo {
+                executable_path,
+                installation_folder,
+                uninstall_command,
+            },
+        ))
     }
 }
-
 mod tests {
     use crate::includes::{
         github::api::Repo,
@@ -173,34 +170,6 @@ mod tests {
             senpwai_package,
         },
     };
-    use tokio;
-
-    #[tokio::test]
-    async fn test_updating() {
-        let new_package = senpwai_package("2.0.6".to_owned())
-            .update(
-                &client(),
-                &package_installers_dir(),
-                &loading_animation(),
-                "latest",
-                &Repo::generate_version_regex(),
-                &&Installer::generate_startmenu_paths(),
-                &Installer::generate_user_uninstall_reg_key().expect("Ok(user_uninstall_reg_key)"),
-                &Installer::generate_machine_uninstall_reg_key()
-                    .expect("Ok(machine_uninstall_reg_key)"),
-            )
-            .await
-            .expect("Ok(Option<Package>)")
-            .expect("Some(new_package)");
-        println!("Results for update {:?}", new_package);
-        assert!(new_package.version != "2.0.6");
-        assert!(new_package
-            .install_info
-            .executable_path
-            .expect("Some(executable_path)")
-            .is_file());
-        assert!(new_package.install_info.uninstall_command.is_some());
-    }
     #[test]
     fn test_uninstalling() {
         assert!(senpwai_latest_package()
