@@ -7,7 +7,7 @@ use std::{
     collections::HashSet,
     env, fs,
     io::{self, Error as IOError},
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::Command,
 };
 use tokio::io::AsyncWriteExt;
@@ -18,12 +18,11 @@ use winreg::{
 
 use crate::includes::{
     error::{ContentLengthError, RequestIoContentLengthError},
-    utils::LoadingAnimation,
+    utils::{display_path, LoadingAnimation, DEBUG, MSI_EXEC},
 };
 
-use super::utils::{DEBUG, MSI_EXEC};
-
-const MSI_SILENT_ARG: &str = "/qn";
+// Running an msi installer that needs admin access silently is problematic since it won't tell us that it failed
+// const MSI_SILENT_ARG: &str = "/qn";
 const INNO_SILENT_ARG: &str = "/VERYSILENT";
 const NSIS_SILENT_ARG: &str = "/S";
 const STARTMENU_FOLDER_ENDPOINT: &str = "\\Microsoft\\Windows\\Start Menu\\Programs";
@@ -69,7 +68,7 @@ impl Installer {
         if path.is_file() {
             println!(
                 "Using cached installer at: {}",
-                path.canonicalize()?.display()
+                display_path(&path).unwrap_or_default()
             );
             return Ok(path);
         }
@@ -119,20 +118,19 @@ impl Installer {
         };
         (gen("APPDATA"), gen("PROGRAMDATA"))
     }
-    fn fetch_shortcut_files_and_dirs(
+    fn fetch_shortcut_files(
         files: &mut HashSet<PathBuf>,
         startmenu_folder: &PathBuf,
         check_inner_folders: bool,
     ) -> Result<(), IOError> {
-        let entries = startmenu_folder.read_dir()?;
-        for e in entries {
+        for e in startmenu_folder.read_dir()? {
             match e {
                 Ok(e) => {
                     let e = e.path();
                     if e.is_file() && e.ends_with(".lnk") {
                         files.insert(e);
                     } else if check_inner_folders && e.is_dir() {
-                        Installer::fetch_shortcut_files_and_dirs(files, startmenu_folder, false)?;
+                        Installer::fetch_shortcut_files(files, startmenu_folder, false)?;
                     }
                 }
                 Err(err) => return Err(err),
@@ -156,11 +154,7 @@ impl Installer {
 
     fn run_installation(&self, file_path: &PathBuf) -> Result<(), std::io::Error> {
         match self.file_extension == "msi" {
-            true => Command::new(MSI_EXEC)
-                .arg("/i")
-                .arg(file_path)
-                .arg(MSI_SILENT_ARG)
-                .output()?,
+            true => Command::new(MSI_EXEC).arg("/i").arg(file_path).output()?,
             false => Command::new(file_path)
                 .args([INNO_SILENT_ARG, NSIS_SILENT_ARG])
                 .output()?,
@@ -194,8 +188,7 @@ impl Installer {
         startmenu_folder: &PathBuf,
     ) -> Option<PathBuf> {
         let mut shortcut_files_after = HashSet::<PathBuf>::new();
-        Installer::fetch_shortcut_files_and_dirs(&mut shortcut_files_after, startmenu_folder, true)
-            .ok()?;
+        Installer::fetch_shortcut_files(&mut shortcut_files_after, startmenu_folder, true).ok()?;
 
         let new_files = shortcut_files_after
             .difference(shortcut_files_before)
@@ -231,6 +224,7 @@ impl Installer {
     }
 
     fn fetch_uninstall_command(
+        installation_folder: &Option<PathBuf>,
         user_reg_keys_before: &HashSet<String>,
         machine_reg_keys_before: &HashSet<String>,
         user_uninstall_reg_key: &RegKey,
@@ -250,6 +244,20 @@ impl Installer {
                 &machine_uninstall_reg_key,
             );
         }
+        if uninstall_command.is_none() && installation_folder.is_some() {
+            for e in installation_folder
+                .as_ref()
+                .expect("installation_folder.is_some()")
+                .read_dir()?
+            {
+                if let Ok(e) = e {
+                    let file_name = e.file_name().to_str().unwrap().to_lowercase();
+                    if file_name.contains("unins") && file_name.ends_with(".exe") {
+                        uninstall_command = Some(display_path(&e.path())?);
+                    }
+                }
+            }
+        }
         Ok(uninstall_command)
     }
 
@@ -265,16 +273,8 @@ impl Installer {
         let user_reg_keys_before = Installer::fetch_reg_keys(user_uninstall_reg_key)?;
         let machine_reg_keys_before = Installer::fetch_reg_keys(machine_uninstall_reg_key)?;
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
-        Installer::fetch_shortcut_files_and_dirs(
-            &mut shortcut_files_before,
-            &startmenu_folders.0,
-            true,
-        )?;
-        Installer::fetch_shortcut_files_and_dirs(
-            &mut shortcut_files_before,
-            &startmenu_folders.1,
-            true,
-        )?;
+        Installer::fetch_shortcut_files(&mut shortcut_files_before, &startmenu_folders.0, true)?;
+        Installer::fetch_shortcut_files(&mut shortcut_files_before, &startmenu_folders.1, true)?;
 
         self.run_installation(installer_path)?;
         if !DEBUG {
@@ -303,6 +303,7 @@ impl Installer {
             .and_then(|ep| ep.parent().map(|p| PathBuf::from(p)));
 
         let uninstall_command = Installer::fetch_uninstall_command(
+            &installation_folder,
             &user_reg_keys_before,
             &machine_reg_keys_before,
             user_uninstall_reg_key,

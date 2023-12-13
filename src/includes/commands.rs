@@ -15,7 +15,7 @@ use crate::includes::{
     github::{self, api::Repo},
     install::Installer,
     package::Package,
-    utils::{LoadingAnimation, APP_NAME_LOWER},
+    utils::{LoadingAnimation, APP_NAME_LOWER, display_path},
 };
 
 fn eprint_no_installed_package_found(name: &str) {
@@ -63,7 +63,7 @@ pub async fn download_installer(
     if let Some((_, _, installer_path)) =
         internal_download_installer(name, client, version, version_regex, download_path).await?
     {
-        println!("Downloaded at {}", installer_path.display().to_string());
+        println!("Downloaded at {}", display_path(&installer_path)?);
     }
     Ok(())
 }
@@ -156,7 +156,7 @@ pub fn uninstall_package(
             match uninstalled {
                 true => Ok(println!("Successfully uninstalled {}.", name)),
                 false => Ok(eprintln!(
-                    "Uninstallation failed but it was removed from the package database"
+                    "Failed to automatically uninstall the package, but it was removed from the package database"
                 )),
             }
         }
@@ -339,6 +339,7 @@ pub fn run_package(db: &PackageDBManager, name: &str) -> Result<(), KnownErrors>
     match db.find_package(name)? {
         Some(p) => match &p.install_info.executable_path {
             Some(ep) => {
+                println!("Starting {}.. .", p.repo.name);
                 Command::new(ep).spawn()?;
                 Ok(())
             }

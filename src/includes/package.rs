@@ -14,7 +14,7 @@ use winreg::RegKey;
 
 use crate::includes::error::RequestIoContentLengthError;
 
-use super::utils::MSI_EXEC;
+use super::utils::{MSI_EXEC, display_path};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
@@ -50,7 +50,7 @@ impl Package {
         self.install_info
             .installation_folder
             .as_ref()
-            .map(|f| f.display().to_string())
+            .map(|f| display_path(f).unwrap_or_default())
             .unwrap_or_default()
     }
 

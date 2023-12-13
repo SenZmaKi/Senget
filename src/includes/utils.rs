@@ -4,7 +4,7 @@ use reqwest::{header, Client};
 use spinners::{Spinner, Spinners};
 use std::{
     sync::{Arc, Condvar, Mutex},
-    thread::{self, JoinHandle},
+    thread::{self, JoinHandle}, path::PathBuf, io,
 };
 
 
@@ -17,6 +17,11 @@ pub const MSI_EXEC: &str = "MsiExec.exe";
 pub const DEBUG: bool = true;
 
 
+pub fn display_path(path: &PathBuf) -> Result<String, io::Error> {
+                                                    // Remove the weird canonicalised path delimeter e.g., 
+                                                    // \\?\C:\Users\PC\OneDrive -> C:\Users\PC\OneDrive
+    Ok(path.canonicalize()?.display().to_string().replace("\\\\?\\", ""))
+}
 pub struct LoadingAnimation {
     stop_flag: Arc<(Mutex<bool>, Condvar)>,
 }
