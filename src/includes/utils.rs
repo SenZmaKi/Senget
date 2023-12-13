@@ -23,35 +23,54 @@ pub fn display_path(path: &PathBuf) -> Result<String, io::Error> {
     Ok(path.canonicalize()?.display().to_string().replace("\\\\?\\", ""))
 }
 pub struct LoadingAnimation {
-    stop_flag: Arc<(Mutex<bool>, Condvar)>,
+    stop_flag: Arc<(Mutex<Option<bool>>, Condvar)>,
+    join_handle: Option<JoinHandle<()>>,
 }
 
 impl LoadingAnimation {
     pub fn new() -> LoadingAnimation {
-        let stop_flag = Arc::new((Mutex::new(false), Condvar::new()));
-        LoadingAnimation { stop_flag }
+        let stop_flag = Arc::new((Mutex::new(None), Condvar::new()));
+        LoadingAnimation {
+            stop_flag,
+            join_handle: None,
+        }
     }
 
-    pub fn start(&self, task: String) -> JoinHandle<()> {
+    pub fn start(&mut self, task: String) {
         let continue_flag = self.stop_flag.clone();
-        thread::spawn(move || {
+        let handle = thread::spawn(move || {
             let mut spinner = Spinner::new(Spinners::Material, task);
             let (lock, cvar) = &*continue_flag;
             let mut guard = lock.lock().unwrap();
-            // To avoid spurious wakeups we must check if the value of guard bool
-            // really changed when the thread was woke up or it was just a spurious wakeup
-            while !*guard {
+            while guard.is_none() {
                 guard = cvar.wait(guard).unwrap();
             }
-            spinner.stop_and_persist("✔", "Finished\n".to_owned());
-        })
+            if guard.unwrap() {
+                spinner.stop_and_persist("✔", "Finished\n".to_owned());
+            } else {
+                spinner.stop_and_persist("✘", "Failed\n".to_owned());
+            }
+        });
+
+        self.join_handle = Some(handle);
     }
 
-    pub fn stop(&self, join_handle: JoinHandle<()>) {
-        *self.stop_flag.0.lock().unwrap() = true;
+    pub fn stop(&mut self) {
+        *self.stop_flag.0.lock().unwrap() = Some(true);
         self.stop_flag.1.notify_one();
-        join_handle.join().unwrap();
-        *self.stop_flag.0.lock().unwrap() = false;
+        if let Some(join_handle) = self.join_handle.take() {
+            join_handle.join().unwrap();
+        }
+    }
+}
+
+impl Drop for LoadingAnimation {
+    fn drop(&mut self) {
+        *self.stop_flag.0.lock().unwrap() = Some(false);
+        self.stop_flag.1.notify_one();
+        if let Some(join_handle) = self.join_handle.take() {
+            join_handle.join().unwrap();
+        }
     }
 }
 
@@ -75,10 +94,10 @@ mod tests {
     #[test]
     fn test_loading() {
         let run = || {
-            let load_anim = loading_animation();
-            let join_handle = load_anim.start("Fondling balls.. .".to_owned());
+            let mut load_anim = loading_animation();
+            load_anim.start("Fondling balls.. .".to_owned());
             thread::sleep(Duration::new(5, 0));
-            load_anim.stop(join_handle);
+            load_anim.stop();
         };
         run();
         thread::sleep(Duration::new(2, 0));

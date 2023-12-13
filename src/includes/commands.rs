@@ -27,8 +27,8 @@ fn eprintln_no_package_found(name: &str) {
     eprintln!("No package named \"{}\" found.", name);
 }
 
-fn eprintln_no_valid_installer(name: &str) {
-    eprintln!("No valid install for {} found", name);
+fn eprintln_no_valid_installer(package_name: &str) {
+    eprintln!("No valid installer for {} was found", package_name);
 }
 
 async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, KnownErrors> {
@@ -56,6 +56,72 @@ pub async fn show_package(
             None => Ok(eprintln_no_package_found(name)),
         },
     }
+}
+
+pub fn clear_cached_installers(installer_folder_path: &PathBuf) -> Result<(), KnownErrors> {
+    for f in installer_folder_path.read_dir()? {
+        let f = f?.path();
+        if f.is_file() {
+            fs::remove_file(f)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn purge_packages(db: &mut PackageDBManager) -> Result<(), KnownErrors> {
+    let mut to_remove: Vec<Package> = Vec::new();
+    for p in db.fetch_all_packages() {
+        if let Some(exe) = p.install_info.executable_path.as_ref() {
+            if !exe.is_file() {
+                to_remove.push(p.to_owned());
+            }
+        }
+    }
+    for p in to_remove {
+        db.remove_package(&p)?;
+        println!("Purged {}", p.repo.name);
+    }
+    Ok(())
+}
+
+async fn update_all_packages(
+    db: &mut PackageDBManager,
+    client: &Client,
+    version: &str,
+    version_regex: &Regex,
+    installer_download_path: &PathBuf,
+    loading_animation: &mut LoadingAnimation,
+    startmenu_folders: &(PathBuf, PathBuf),
+    user_uninstall_reg_key: &RegKey,
+    machine_uninstall_reg_key: &RegKey,
+) -> Result<(), KnownErrors> {
+    let mut errored_packages: Vec<String> = Vec::new();
+    for p in db.fetch_all_packages().to_owned() {
+        if let Err(err) = update_package(
+            db,
+            &p.repo.name,
+            client,
+            version,
+            version_regex,
+            installer_download_path,
+            loading_animation,
+            startmenu_folders,
+            user_uninstall_reg_key,
+            machine_uninstall_reg_key,
+        )
+        .await
+        {
+            errored_packages.push(p.repo.name);
+        }
+    }
+    match errored_packages.is_empty() {
+        true => println!("Successfully updated all the necessary packages"),
+        false => println!(
+            "Errors encountered updating the following packages:\n{}",
+            errored_packages.join(", ")
+        ),
+    }
+    Ok(())
 }
 
 pub async fn download_installer(
@@ -91,7 +157,7 @@ async fn internal_download_installer(
                     Ok(Some((repo, installer, installer_path)))
                 }
                 None => {
-                    eprintln_no_valid_installer(name);
+                    eprintln_no_valid_installer(&repo.name);
                     Ok(None)
                 }
             }
@@ -109,7 +175,7 @@ pub async fn install_package(
     version: &str,
     version_regex: &Regex,
     installer_download_path: &PathBuf,
-    loading_animation: &LoadingAnimation,
+    loading_animation: &mut LoadingAnimation,
     startmenu_folders: &(PathBuf, PathBuf),
     user_uninstall_reg_key: &RegKey,
     machine_uninstall_reg_key: &RegKey,
@@ -151,7 +217,8 @@ pub async fn install_package(
 pub fn uninstall_package(
     db: &mut PackageDBManager,
     name: &str,
-    loading_animation: &LoadingAnimation,
+    force: bool,
+    loading_animation: &mut LoadingAnimation,
 ) -> Result<(), KnownErrors> {
     match db.find_package(name)? {
         Some(package) => {
@@ -160,23 +227,70 @@ pub fn uninstall_package(
             db.remove_package(&package.to_owned())?;
             match uninstalled {
                 true => Ok(println!("Successfully uninstalled {}.", name)),
-                false => Ok(eprintln!(
+                false => match force {
+                    true => Ok(eprintln!(
                     "Failed to automatically uninstall the package, but it was removed from the package database"
                 )),
+                    false => Ok(eprintln!("Failed to automatically uninstall the package, manually uninstall it then run the uninstall command with --force flag to remove it from the package database"))},
             }
         }
         None => Ok(eprintln_no_installed_package_found(name)),
     }
 }
 
-pub async fn update_package(
+pub async fn update_handler(
     db: &mut PackageDBManager,
     name: &str,
     client: &Client,
     version: &str,
     version_regex: &Regex,
     installer_download_path: &PathBuf,
-    loading_animation: &LoadingAnimation,
+    loading_animation: &mut LoadingAnimation,
+    startmenu_folders: &(PathBuf, PathBuf),
+    user_uninstall_reg_key: &RegKey,
+    machine_uninstall_reg_key: &RegKey,
+) -> Result<(), KnownErrors> {
+    match name == "all" {
+        true => {
+            update_all_packages(
+                db,
+                client,
+                "latest",
+                version_regex,
+                installer_download_path,
+                loading_animation,
+                startmenu_folders,
+                user_uninstall_reg_key,
+                machine_uninstall_reg_key,
+            )
+            .await
+        }
+        false => {
+            update_package(
+                db,
+                name,
+                client,
+                version,
+                version_regex,
+                installer_download_path,
+                loading_animation,
+                startmenu_folders,
+                user_uninstall_reg_key,
+                machine_uninstall_reg_key,
+            )
+            .await
+        }
+    }
+}
+
+async fn update_package(
+    db: &mut PackageDBManager,
+    name: &str,
+    client: &Client,
+    version: &str,
+    version_regex: &Regex,
+    installer_download_path: &PathBuf,
+    loading_animation: &mut LoadingAnimation,
     startmenu_folders: &(PathBuf, PathBuf),
     user_uninstall_reg_key: &RegKey,
     machine_uninstall_reg_key: &RegKey,
@@ -201,7 +315,10 @@ pub async fn update_package(
                         Ok(())
                     }
                     false => {
-                        println!("Updating from {} --> {}", old_package.version, installer.version);
+                        println!(
+                            "Updating {} from {} --> {}",
+                            old_package.repo.name, old_package.version, installer.version
+                        );
                         let new_package = old_package
                             .update_version(
                                 client,
@@ -217,7 +334,7 @@ pub async fn update_package(
                         Ok(())
                     }
                 },
-                None => Ok(eprintln_no_valid_installer(name)),
+                None => Ok(eprintln_no_valid_installer(&old_package.repo.name)),
             }
         }
         None => Ok(eprintln_no_installed_package_found(name)),
@@ -225,53 +342,101 @@ pub async fn update_package(
 }
 
 pub fn list_packages(db: &PackageDBManager) -> () {
-    let mut name_width = "Name".len();
-    let mut version_width = "Version".len();
-    let mut installation_folder_width = "Installation Folder".len();
-    let compare_len = |prev_max_len: usize, curr_str: &str| curr_str.len().max(prev_max_len);
     let packages = db.fetch_all_packages();
     if packages.is_empty() {
         return println!("No packages installed");
     }
-    for p in packages {
-        name_width = compare_len(name_width, &p.repo.name);
-        version_width = compare_len(version_width, &p.version);
-        installation_folder_width =
-            compare_len(installation_folder_width, &p.installation_folder_str());
-    }
-    let format_row = |name: &str, version: &str, installation_folder: &str| {
-        format!(
-            "{:<name_width$}    {:<version_width$}    {:<installation_folder_width$}\n",
-            name, version, installation_folder
-        )
+    let rows = packages
+        .iter()
+        .map(|p| {
+            let path = p
+                .install_info
+                .executable_path
+                .to_owned()
+                .map(|p| display_path(&p).unwrap_or_default())
+                .unwrap_or_default();
+            vec![
+                p.repo.name.to_owned(),
+                p.version.to_owned(),
+                path.to_owned(),
+            ]
+        })
+        .collect();
+    let column_headers = vec![
+        "Name".to_owned(),
+        "Version".to_owned(),
+        "Installation Folder".to_owned(),
+    ];
+    println!("{}", generate_table_string(&column_headers, &rows));
+}
+
+// My magnum opus
+pub fn generate_table_string(column_headers: &Vec<String>, rows: &Vec<Vec<String>>) -> String {
+    let number_of_columns = column_headers.len();
+    let number_of_rows = rows.len();
+    // Calculate the maximum possible length of a string per column
+    let max_length_per_column = (0..number_of_columns)
+        .into_iter()
+        .map(|column_idx| {
+            (0..number_of_rows)
+                .into_iter()
+                .map(|row_idx: usize| rows[row_idx][column_idx].to_owned())
+                .max_by_key(|item| item.len())
+                .unwrap()
+                .len()
+        })
+        .collect::<Vec<usize>>();
+    // Update the obtained max lengths if any of the ones in the  column headers is longer
+    let max_length_per_column = column_headers
+        .iter()
+        .zip(max_length_per_column.iter())
+        .map(|(str, max_len)| str.len().max(max_len.to_owned()))
+        .collect::<Vec<usize>>();
+    // Format a row of data
+    let last_idx = number_of_columns - 1;
+    let format_row = |row: &Vec<String>| {
+        row.iter()
+            .enumerate()
+            .map(|(idx, item)| {
+                let max_len = max_length_per_column[idx]; // 4 spaces
+                let delimeter = if idx == last_idx { "\n" } else { "    " };
+                format!("{:<max_len$}{}", item, delimeter)
+            })
+            .collect::<String>()
     };
-    let mut final_str = format_row("Name", "Version", "Installation Folder");
-    let spaces_count = 4 + 4;
-    final_str += &"-".repeat(name_width + version_width + installation_folder_width + spaces_count);
-    final_str += "\n";
-    for p in packages {
-        final_str += &format_row(&p.repo.name, &p.version, &p.installation_folder_str());
-    }
-    print!("{}", final_str);
+
+    let header_str = &format_row(&column_headers);
+    let max_char_count_per_row = (4 * (number_of_columns - 1)) + max_length_per_column.iter().sum::<usize>();
+    let seperator_str = "-".repeat(max_char_count_per_row);
+    let data_str = rows.iter().map(|r| format_row(r)).collect::<String>();
+    format!("{}{}\n{}", header_str, seperator_str, data_str)
 }
 
 pub async fn search_repos(query: &str, client: &Client) -> Result<(), KnownErrors> {
     let results = github::api::search(query, client).await?;
-    let mut final_str = "".to_owned();
     if results.is_empty() {
         return Ok(println!("No results found."));
     }
-    for r in results {
-        final_str += &format!(
-            "Full Name: {}\nDescription: {}\n\n",
-            r.full_name,
-            r.description.unwrap_or_default()
-        );
-    }
-    Ok(print!("{}", final_str))
+    let rows = results
+        .iter()
+        .map(|r| {
+            vec![
+                r.full_name.to_owned(),
+                r.description.to_owned().unwrap_or_default(),
+            ]
+        })
+        .collect::<Vec<Vec<String>>>();
+    let column_headers = vec![
+        "Full Name".to_owned(),
+        "Description".to_owned(),
+    ];
+    Ok(println!(
+        "{}",
+        generate_table_string(&column_headers, &rows)
+    ))
 }
 
-pub fn exported_packages_file_name() -> String {
+pub fn exported_packages_filename() -> String {
     format!("{}-packages.txt", APP_NAME_LOWER)
 }
 pub fn export_packages(
@@ -283,13 +448,10 @@ pub fn export_packages(
         let p_entry = format!("{}=={}\n", &p.repo.full_name, &p.version);
         final_str.push_str(&p_entry);
     }
-    let export_file_path = export_folder_path.join(exported_packages_file_name());
+    let export_file_path = export_folder_path.join(exported_packages_filename());
     let mut f = File::create(&export_file_path)?;
     f.write_all(final_str.as_bytes())?;
-    Ok(println!(
-        "Exported at {}",
-        export_file_path.display().to_string()
-    ))
+    Ok(println!("Exported at {}", display_path(&export_file_path)?))
 }
 
 pub async fn import_packages(
@@ -299,11 +461,12 @@ pub async fn import_packages(
     client: &Client,
     version_regex: &Regex,
     installer_download_path: &PathBuf,
-    loading_animation: &LoadingAnimation,
+    loading_animation: &mut LoadingAnimation,
     startmenu_folders: &(PathBuf, PathBuf),
     user_uninstall_reg_key: &RegKey,
     machine_uninstall_reg_key: &RegKey,
 ) -> Result<(), KnownErrors> {
+    let mut errored_packages: Vec<String> = Vec::new();
     for (name, version) in extract_package_name_and_version(export_file_path, ignore_versions)? {
         if let Err(err) = install_package(
             db,
@@ -319,9 +482,14 @@ pub async fn import_packages(
         )
         .await
         {
-            print_error(err);
+            errored_packages.push(name);
+
         }
     }
+    match errored_packages.is_empty() {
+        true => println!("Successfully imported all packages"),
+        false => println!("Errors encountered importing the following packages:\n{}", errored_packages.join(", "))
+    };
     Ok(())
 }
 

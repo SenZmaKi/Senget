@@ -71,7 +71,6 @@ impl Package {
                 let mut split = uninstall_command.split("\" ");
                 // "C:\Users\PC\AppData\Local\Programs\Miru\Uninstall Miru.exe"
                 let program = split.next().unwrap_or_default().replace("\"", "");
-                println!("{}", program);
                 // "/currentuser /S"
                 let args_string = split.next().unwrap_or_default();
                 // ["/currentuser", "/S"]
@@ -80,10 +79,9 @@ impl Package {
             }
         }
     }
-    pub fn uninstall(&self, loading_animation: &LoadingAnimation) -> Result<bool, io::Error> {
+    pub fn uninstall(&self, loading_animation: &mut LoadingAnimation) -> Result<bool, io::Error> {
         match &self.install_info.uninstall_command {
             Some(us) => {
-                let join_handle =
                     loading_animation.start(format!("Uninstalling {}.. .", self.repo.name));
                 let (program, args) = Package::extract_program_and_args(us);
                 if let Err(err) = Command::new(program).args(args).output() {
@@ -91,13 +89,12 @@ impl Package {
                     if err.to_string().contains(
                         "The filename, directory name, or volume label syntax is incorrect.",
                     ) {
-                        println!("{}", 1);
                         // We assume that if the command didn't work then the user previously uninstalled it themselves
-                        loading_animation.stop(join_handle);
+                        loading_animation.stop();
                         return Ok(false);
                     }
                 }
-                loading_animation.stop(join_handle);
+                loading_animation.stop();
                 Ok(true)
             }
             None => Ok(false),
@@ -124,7 +121,7 @@ impl Package {
         client: &Client,
         installer: Installer,
         installer_download_path: &PathBuf,
-        loading_animation: &LoadingAnimation,
+        loading_animation: &mut LoadingAnimation,
         startmenu_folders: &(PathBuf, PathBuf),
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
@@ -173,7 +170,7 @@ mod tests {
     #[test]
     fn test_uninstalling() {
         assert!(senpwai_latest_package()
-            .uninstall(&loading_animation())
+            .uninstall(&mut loading_animation())
             .expect("Ok(uninstall)"))
     }
 }

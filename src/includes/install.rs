@@ -50,7 +50,7 @@ impl Installer {
         url: String,
         version: String,
     ) -> Installer {
-        let file_title = format!("{}-{}-Installer.{}", package_name, version, file_extension);
+        let file_title = format!("{}-v{}-Installer.{}", package_name, version, file_extension);
         Installer {
             package_name,
             file_title,
@@ -264,12 +264,12 @@ impl Installer {
     pub fn install(
         &self,
         installer_path: &PathBuf,
-        loading_animation: &LoadingAnimation,
+        loading_animation: &mut LoadingAnimation,
         startmenu_folders: &(PathBuf, PathBuf),
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
     ) -> Result<InstallInfo, IOError> {
-        let join_handle = loading_animation.start(format!("Installing {}.. .", self.package_name));
+        loading_animation.start(format!("Installing {}.. .", self.package_name));
         let user_reg_keys_before = Installer::fetch_reg_keys(user_uninstall_reg_key)?;
         let machine_reg_keys_before = Installer::fetch_reg_keys(machine_uninstall_reg_key)?;
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
@@ -289,7 +289,7 @@ impl Installer {
                     &shortcut_files_before,
                     &startmenu_folders.0,
                 )
-                .or_else(|| {
+                .or_else(|| {   
                     Installer::dynamically_find_package_shortcut(
                         &shortcut_files_before,
                         &startmenu_folders.1,
@@ -310,7 +310,7 @@ impl Installer {
             machine_uninstall_reg_key,
         )?;
 
-        loading_animation.stop(join_handle);
+        loading_animation.stop();
         Ok(InstallInfo {
             executable_path,
             installation_folder,
@@ -347,7 +347,7 @@ mod tests {
         let install_info = senpwai_latest_installer()
             .install(
                 &path,
-                &loading_animation(),
+                &mut loading_animation(),
                 &&Installer::generate_startmenu_paths(),
                 &Installer::generate_user_uninstall_reg_key().expect("Ok(user_uninstall_reg_key)"),
                 &Installer::generate_machine_uninstall_reg_key()

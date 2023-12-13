@@ -2,14 +2,15 @@
 
 use crate::{
     github::serde_json_types::{
-        AssetsResponseJson, ReleaseResponseJson, ReleasesResponseJson, RepoResponseJson,
-        SearchResponseJson,
+        AssetsResponseJson, ReleasesResponseJson, RepoResponseJson, SearchResponseJson,
     },
-    includes::install::Installer,
+    includes::{cli, install::Installer},
 };
 use core::fmt;
 use regex::{self, Regex};
 use serde::{Deserialize, Serialize};
+
+use super::serde_json_types::ReleaseResponseJson;
 
 const GITHUB_API_ENTRY_POINT: &str = "https://api.github.com";
 
@@ -107,7 +108,10 @@ impl Repo {
             if inner_file_extension == "exe" || inner_file_extension == "msi" {
                 file_extension = inner_file_extension.to_owned();
                 url = asset.browser_download_url;
-                if inner_file_extension == "msi" || name_lower.contains("installer") || name_lower.contains("setup") {
+                if inner_file_extension == "msi"
+                    || name_lower.contains("installer")
+                    || name_lower.contains("setup")
+                {
                     break;
                 }
             }
@@ -144,8 +148,11 @@ impl Repo {
         version_regex: &Regex,
     ) -> Result<Option<Installer>, reqwest::Error> {
         let url = self.generate_endpoint("releases/latest");
-        let release_response_json: ReleaseResponseJson =
-            client.get(url).send().await?.json().await?;
+        let response = client.get(url).send().await?;
+        if response.status() == 404 {
+            return Ok(None);
+        }
+        let release_response_json: ReleaseResponseJson = response.json().await?;
         if let Some(version) = Repo::parse_version(&release_response_json.tag_name, version_regex) {
             return Ok(
                 self.parse_for_windows_installer(release_response_json.assets, version.to_string())
@@ -177,9 +184,7 @@ pub fn extract_repo(repo_response_json: RepoResponseJson) -> Repo {
             .map(|l| l.name.unwrap_or_default()),
     )
 }
-fn get() {
-
-}
+fn get() {}
 pub async fn search(query: &str, client: &reqwest::Client) -> Result<Vec<Repo>, reqwest::Error> {
     let url = format!("{GITHUB_API_ENTRY_POINT}/search/repositories?q={query}&per_page=10");
     let search_response_json: SearchResponseJson = client.get(url).send().await?.json().await?;

@@ -1,7 +1,6 @@
 use crate::includes::commands::{
-    download_installer, export_packages, exported_packages_file_name, import_packages,
+    download_installer, export_packages, exported_packages_filename, import_packages,
     install_package, list_packages, run_package, search_repos, show_package, uninstall_package,
-    update_package,
 };
 use crate::includes::utils::{APP_NAME, DESCRIPTION, VERSION};
 use crate::includes::{database::PackageDBManager, error::KnownErrors, utils::LoadingAnimation};
@@ -11,14 +10,30 @@ use reqwest::Client;
 use std::path::PathBuf;
 use winreg::RegKey;
 
+use super::commands::{clear_cached_installers, purge_packages, update_handler};
+
 pub fn parse_commands() -> Command {
     let name_arg = Arg::new("name").help("Name of the package").required(true);
     let version_arg = Arg::new("version")
         .help("Version of the package")
         .default_value("latest");
-    let folder_path_arg = |help: &str| Arg::new("path").help(format!("Path to the folder{}", help));
+    let folder_path_arg = |help: &str| {
+        Arg::new("path")
+            .default_value(".")
+            .help(format!("Path to the folder{}", help))
+    };
+    let force_flag_arg = |help: &str| {
+        Arg::new("force")
+            .short('f')
+            .long("force")
+            .action(ArgAction::SetTrue)
+            .help(help.to_owned())
+    };
 
     let list_command = Command::new("list").about("List installed packages");
+    let purge_command = Command::new("purge")
+        .about("Remove packages that were uninstalled outside senget from the package database");
+    let clear_cache_command = Command::new("clear-cache").about("Clear cached installers");
     let run_command = Command::new("run").about("Run a package").arg(&name_arg);
     let show_command = Command::new("show")
         .about("Show information about a package")
@@ -28,7 +43,10 @@ pub fn parse_commands() -> Command {
         .arg(&name_arg);
     let uninstall_command = Command::new("uninstall")
         .about("Uninstall a package")
-        .arg(&name_arg);
+        .arg(&name_arg)
+        .arg(&force_flag_arg(
+            "Remove the package from the package database even if automatic uninstallation fails",
+        ));
     let install_command = Command::new("install")
         .about("Install a package")
         .arg(&name_arg)
@@ -36,31 +54,32 @@ pub fn parse_commands() -> Command {
     let download_command = Command::new("download")
         .about("Download the installer for a package")
         .arg(&name_arg)
-        .arg(folder_path_arg(" to download the installer into").required(true))
-        .arg(&version_arg);
+        .arg(&version_arg)
+        .arg(folder_path_arg(" to download the installer into"));
     let export_command = Command::new("export")
         .about(format!(
             "Export a list of installed packages to a file named {}",
-            exported_packages_file_name()
+            exported_packages_filename()
         ))
-        .arg(folder_path_arg(" to save the export file into").default_value("."));
+        .arg(folder_path_arg(" to save the export file into"));
     let import_command = Command::new("import")
         .about("Import a list of packages by installing")
         .arg(
             Arg::new("path")
                 .help("Path to file containing the list of packages")
-                .required(true),
+                // TODO: Update this in case I ever change crate::includes::commands::exported_packages_filename()
+                .default_value("senget-packages.txt"),
         )
         .arg(
             Arg::new("ignore-versions")
                 .long("ignore-versions")
                 .short('i')
                 .action(ArgAction::SetTrue)
-                .help("Whether to ignore the versions in the file and install the latest packages"),
+                .help("Ignore the versions in the file and install the latest packages"),
         );
     let update_command = Command::new("update")
         .about("Update/Downgrade a package")
-        .arg(&name_arg)
+        .arg(&name_arg.default_value("all").required(false))
         .arg(
             Arg::new("version")
                 .help("Version to update/downgrade to")
@@ -80,6 +99,8 @@ pub fn parse_commands() -> Command {
         .subcommand(run_command)
         .subcommand(export_command)
         .subcommand(import_command)
+        .subcommand(clear_cache_command)
+        .subcommand(purge_command)
 }
 
 pub async fn match_commands(
@@ -88,7 +109,7 @@ pub async fn match_commands(
     client: &Client,
     installer_download_path: &PathBuf,
     version_regex: &Regex,
-    loading_animation: &LoadingAnimation,
+    loading_animation: &mut LoadingAnimation,
     startmenu_folders: &(PathBuf, PathBuf),
     user_uninstall_reg_key: &RegKey,
     machine_uninstall_reg_key: &RegKey,
@@ -102,13 +123,18 @@ pub async fn match_commands(
     let get_path = |arg_match: &ArgMatches| PathBuf::from(get_string_value("path", arg_match));
     match commands.get_matches().subcommand() {
         Some(("list", _)) => Ok(list_packages(db)),
+        Some(("purge", _)) => purge_packages(db),
+        Some(("clear-cache", _)) => clear_cached_installers(installer_download_path),
         Some(("run", arg_match)) => run_package(db, &get_name(arg_match)),
         Some(("show", arg_match)) => show_package(db, &get_name(arg_match), client).await,
         Some(("search", arg_match)) => search_repos(&get_name(arg_match), client).await,
         Some(("export", arg_match)) => export_packages(db, &get_path(arg_match)),
-        Some(("uninstall", arg_match)) => {
-            uninstall_package(db, &get_name(arg_match), loading_animation)
-        }
+        Some(("uninstall", arg_match)) => uninstall_package(
+            db,
+            &get_name(arg_match),
+            get_flag("force", arg_match),
+            loading_animation,
+        ),
         Some(("download", arg_match)) => {
             download_installer(
                 &get_name(arg_match),
@@ -136,7 +162,7 @@ pub async fn match_commands(
             .await
         }
         Some(("update", arg_match)) => {
-            update_package(
+            update_handler(
                 db,
                 &get_name(&arg_match),
                 client,
