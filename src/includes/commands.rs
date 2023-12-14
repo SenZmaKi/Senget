@@ -1,7 +1,6 @@
 use std::{
-    fmt::format,
     fs::{self, File},
-    io::{self, Write},
+    io::Write,
     path::PathBuf,
     process::Command,
 };
@@ -16,8 +15,40 @@ use crate::includes::{
     github::{self, api::Repo},
     install::Installer,
     package::Package,
-    utils::{display_path, LoadingAnimation, APP_NAME_LOWER},
+    utils::{display_path, loading_animation, setup_client, APP_NAME_LOWER},
 };
+
+pub struct Statics {
+    pub db: PackageDBManager,
+    pub client: Client,
+    pub version_regex: Regex,
+    pub installer_download_path: PathBuf,
+    pub startmenu_folders: (PathBuf, PathBuf),
+    pub user_uninstall_reg_key: RegKey,
+    pub machine_uninstall_reg_key: RegKey,
+}
+
+impl Statics {
+    pub fn new() -> Result<Statics, KnownErrors> {
+        let db_save_path = PackageDBManager::get_db_file_path()?;
+        let db = PackageDBManager::new(&db_save_path)?;
+        let client = setup_client()?;
+        let installer_download_path = Installer::generate_installer_download_path()?;
+        let startmenu_folders = Installer::generate_startmenu_paths();
+        let user_uninstall_reg_key = Installer::generate_user_uninstall_reg_key()?;
+        let machine_uninstall_reg_key = Installer::generate_machine_uninstall_reg_key()?;
+        let version_regex = github::api::Repo::generate_version_regex();
+        Ok(Statics {
+            db,
+            client,
+            installer_download_path,
+            startmenu_folders,
+            user_uninstall_reg_key,
+            machine_uninstall_reg_key,
+            version_regex,
+        })
+    }
+}
 
 fn eprintln_no_installed_package_found(name: &str) {
     eprintln!("No installed package named \"{}\" found.", name);
@@ -45,8 +76,8 @@ async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, KnownErr
 }
 
 pub async fn show_package(
-    db: &PackageDBManager,
     name: &str,
+    db: &PackageDBManager,
     client: &Client,
 ) -> Result<(), KnownErrors> {
     match db.find_package(name)? {
@@ -84,33 +115,10 @@ pub fn purge_packages(db: &mut PackageDBManager) -> Result<(), KnownErrors> {
     Ok(())
 }
 
-async fn update_all_packages(
-    db: &mut PackageDBManager,
-    client: &Client,
-    version: &str,
-    version_regex: &Regex,
-    installer_download_path: &PathBuf,
-    loading_animation: &mut LoadingAnimation,
-    startmenu_folders: &(PathBuf, PathBuf),
-    user_uninstall_reg_key: &RegKey,
-    machine_uninstall_reg_key: &RegKey,
-) -> Result<(), KnownErrors> {
+async fn update_all_packages(version: &str, statics: &mut Statics) -> Result<(), KnownErrors> {
     let mut errored_packages: Vec<String> = Vec::new();
-    for p in db.fetch_all_packages().to_owned() {
-        if let Err(err) = update_package(
-            db,
-            &p.repo.name,
-            client,
-            version,
-            version_regex,
-            installer_download_path,
-            loading_animation,
-            startmenu_folders,
-            user_uninstall_reg_key,
-            machine_uninstall_reg_key,
-        )
-        .await
-        {
+    for p in statics.db.fetch_all_packages().to_owned() {
+        if let Err(err) = update_package(&p.repo.name, version, statics).await {
             errored_packages.push(p.repo.name);
         }
     }
@@ -126,13 +134,13 @@ async fn update_all_packages(
 
 pub async fn download_installer(
     name: &str,
-    client: &Client,
     version: &str,
-    version_regex: &Regex,
     download_path: &PathBuf,
+    client: &Client,
+    version_regex: &Regex,
 ) -> Result<(), KnownErrors> {
     if let Some((_, _, installer_path)) =
-        internal_download_installer(name, client, version, version_regex, download_path).await?
+        internal_download_installer(name, version, client, version_regex, download_path).await?
     {
         println!("Downloaded at {}", display_path(&installer_path)?);
     }
@@ -140,8 +148,8 @@ pub async fn download_installer(
 }
 async fn internal_download_installer(
     name: &str,
-    client: &Client,
     version: &str,
+    client: &Client,
     version_regex: &Regex,
     download_path: &PathBuf,
 ) -> Result<Option<(Repo, Installer, PathBuf)>, KnownErrors> {
@@ -169,18 +177,11 @@ async fn internal_download_installer(
     }
 }
 pub async fn install_package(
-    db: &mut PackageDBManager,
     name: &str,
-    client: &Client,
     version: &str,
-    version_regex: &Regex,
-    installer_download_path: &PathBuf,
-    loading_animation: &mut LoadingAnimation,
-    startmenu_folders: &(PathBuf, PathBuf),
-    user_uninstall_reg_key: &RegKey,
-    machine_uninstall_reg_key: &RegKey,
+    statics: &mut Statics,
 ) -> Result<(), KnownErrors> {
-    match db.find_package(name)? {
+    match statics.db.find_package(name)? {
         Some(package) => {
             println!("{}\n", package);
             Ok(eprintln!("Package is already installed."))
@@ -188,24 +189,27 @@ pub async fn install_package(
         None => {
             match internal_download_installer(
                 name,
-                client,
                 version,
-                version_regex,
-                installer_download_path,
+                &statics.client,
+                &statics.version_regex,
+                &statics.installer_download_path,
             )
             .await?
             {
                 Some((repo, installer, installer_path)) => {
-                    let install_info = installer.install(
-                        &installer_path,
-                        loading_animation,
-                        startmenu_folders,
-                        user_uninstall_reg_key,
-                        machine_uninstall_reg_key,
-                    )?;
+                    let task = || {
+                        installer.install(
+                            &installer_path,
+                            &statics.startmenu_folders,
+                            &statics.user_uninstall_reg_key,
+                            &statics.machine_uninstall_reg_key,
+                        )
+                    };
+                    let install_info =
+                        loading_animation(format!("Installing {}.. .", repo.name), task)?;
                     let package_name = repo.name.to_owned();
                     let package = Package::new(installer.version, repo, install_info);
-                    db.add_package(package)?;
+                    statics.db.add_package(package)?;
                     Ok(println!("Successfully installed {}.", package_name))
                 }
                 None => Ok(()),
@@ -215,14 +219,15 @@ pub async fn install_package(
 }
 
 pub fn uninstall_package(
-    db: &mut PackageDBManager,
     name: &str,
     force: bool,
-    loading_animation: &mut LoadingAnimation,
+    db: &mut PackageDBManager,
 ) -> Result<(), KnownErrors> {
     match db.find_package(name)? {
         Some(package) => {
-            let uninstalled = package.uninstall(loading_animation)?;
+            let task = || package.uninstall();
+            let uninstalled =
+                loading_animation(format!("Uninstalling {}", package.repo.name), task)?;
             let name = package.repo.name.to_owned();
             db.remove_package(&package.to_owned())?;
             match uninstalled {
@@ -239,66 +244,25 @@ pub fn uninstall_package(
 }
 
 pub async fn update_handler(
-    db: &mut PackageDBManager,
     name: &str,
-    client: &Client,
     version: &str,
-    version_regex: &Regex,
-    installer_download_path: &PathBuf,
-    loading_animation: &mut LoadingAnimation,
-    startmenu_folders: &(PathBuf, PathBuf),
-    user_uninstall_reg_key: &RegKey,
-    machine_uninstall_reg_key: &RegKey,
+    statics: &mut Statics,
 ) -> Result<(), KnownErrors> {
     match name == "all" {
-        true => {
-            update_all_packages(
-                db,
-                client,
-                "latest",
-                version_regex,
-                installer_download_path,
-                loading_animation,
-                startmenu_folders,
-                user_uninstall_reg_key,
-                machine_uninstall_reg_key,
-            )
-            .await
-        }
-        false => {
-            update_package(
-                db,
-                name,
-                client,
-                version,
-                version_regex,
-                installer_download_path,
-                loading_animation,
-                startmenu_folders,
-                user_uninstall_reg_key,
-                machine_uninstall_reg_key,
-            )
-            .await
-        }
+        true => update_all_packages("latest", statics).await,
+        false => update_package(name, version, statics).await,
     }
 }
 
 async fn update_package(
-    db: &mut PackageDBManager,
     name: &str,
-    client: &Client,
     version: &str,
-    version_regex: &Regex,
-    installer_download_path: &PathBuf,
-    loading_animation: &mut LoadingAnimation,
-    startmenu_folders: &(PathBuf, PathBuf),
-    user_uninstall_reg_key: &RegKey,
-    machine_uninstall_reg_key: &RegKey,
+    statics: &mut Statics,
 ) -> Result<(), KnownErrors> {
-    match db.find_package(name)? {
+    match statics.db.find_package(name)? {
         Some(old_package) => {
             match old_package
-                .get_installer(client, version, version_regex)
+                .get_installer(version, &statics.client, &statics.version_regex)
                 .await?
             {
                 Some(installer) => match old_package.version == installer.version {
@@ -319,18 +283,25 @@ async fn update_package(
                             "Updating {} from {} --> {}",
                             old_package.repo.name, old_package.version, installer.version
                         );
-                        let new_package = old_package
-                            .update_version(
-                                client,
-                                installer,
-                                installer_download_path,
-                                loading_animation,
-                                startmenu_folders,
-                                user_uninstall_reg_key,
-                                machine_uninstall_reg_key,
-                            )
+                        let installer_path = installer
+                            .download(&statics.installer_download_path, &statics.client)
                             .await?;
-                        db.update_package(&old_package.to_owned(), new_package)?;
+                        let task = || {
+                            old_package.install_updated_version(
+                                installer,
+                                &installer_path,
+                                &statics.startmenu_folders,
+                                &statics.user_uninstall_reg_key,
+                                &statics.machine_uninstall_reg_key,
+                            )
+                        };
+                        let new_package = loading_animation(
+                            format!("Updating {}.. .", old_package.repo.name),
+                            task,
+                        )?;
+                        statics
+                            .db
+                            .update_package(&old_package.to_owned(), new_package)?;
                         Ok(())
                     }
                 },
@@ -406,7 +377,8 @@ pub fn generate_table_string(column_headers: &Vec<String>, rows: &Vec<Vec<String
     };
 
     let header_str = &format_row(&column_headers);
-    let max_char_count_per_row = (4 * (number_of_columns - 1)) + max_length_per_column.iter().sum::<usize>();
+    let max_char_count_per_row =
+        (4 * (number_of_columns - 1)) + max_length_per_column.iter().sum::<usize>();
     let seperator_str = "-".repeat(max_char_count_per_row);
     let data_str = rows.iter().map(|r| format_row(r)).collect::<String>();
     format!("{}{}\n{}", header_str, seperator_str, data_str)
@@ -426,10 +398,7 @@ pub async fn search_repos(query: &str, client: &Client) -> Result<(), KnownError
             ]
         })
         .collect::<Vec<Vec<String>>>();
-    let column_headers = vec![
-        "Full Name".to_owned(),
-        "Description".to_owned(),
-    ];
+    let column_headers = vec!["Full Name".to_owned(), "Description".to_owned()];
     Ok(println!(
         "{}",
         generate_table_string(&column_headers, &rows)
@@ -440,8 +409,8 @@ pub fn exported_packages_filename() -> String {
     format!("{}-packages.txt", APP_NAME_LOWER)
 }
 pub fn export_packages(
-    db: &PackageDBManager,
     export_folder_path: &PathBuf,
+    db: &PackageDBManager,
 ) -> Result<(), KnownErrors> {
     let mut final_str = "".to_owned();
     for p in db.fetch_all_packages() {
@@ -457,38 +426,20 @@ pub fn export_packages(
 pub async fn import_packages(
     export_file_path: &PathBuf,
     ignore_versions: bool,
-    db: &mut PackageDBManager,
-    client: &Client,
-    version_regex: &Regex,
-    installer_download_path: &PathBuf,
-    loading_animation: &mut LoadingAnimation,
-    startmenu_folders: &(PathBuf, PathBuf),
-    user_uninstall_reg_key: &RegKey,
-    machine_uninstall_reg_key: &RegKey,
+    statics: &mut Statics,
 ) -> Result<(), KnownErrors> {
     let mut errored_packages: Vec<String> = Vec::new();
     for (name, version) in extract_package_name_and_version(export_file_path, ignore_versions)? {
-        if let Err(err) = install_package(
-            db,
-            &name,
-            client,
-            &version,
-            version_regex,
-            installer_download_path,
-            loading_animation,
-            startmenu_folders,
-            user_uninstall_reg_key,
-            machine_uninstall_reg_key,
-        )
-        .await
-        {
+        if let Err(err) = install_package(&name, &version, statics).await {
             errored_packages.push(name);
-
         }
     }
     match errored_packages.is_empty() {
         true => println!("Successfully imported all packages"),
-        false => println!("Errors encountered importing the following packages:\n{}", errored_packages.join(", "))
+        false => println!(
+            "Errors encountered importing the following packages:\n{}",
+            errored_packages.join(", ")
+        ),
     };
     Ok(())
 }
@@ -522,7 +473,7 @@ fn extract_package_name_and_version(
     Ok(name_and_version)
 }
 
-pub fn run_package(db: &PackageDBManager, name: &str) -> Result<(), KnownErrors> {
+pub fn run_package(name: &str, db: &PackageDBManager) -> Result<(), KnownErrors> {
     match db.find_package(name)? {
         Some(p) => match &p.install_info.executable_path {
             Some(ep) => {
@@ -546,12 +497,12 @@ mod tests {
     async fn test_show_package() {
         let mut db = db_manager();
         let client = &client();
-        show_package(&db, "Senpwai", client).await.unwrap();
+        show_package("Senpwai", &db, client).await.unwrap();
         println!();
         db.add_package(senpwai_latest_package()).unwrap();
-        show_package(&db, "SenZmaKi/Senpwai", client).await.unwrap();
+        show_package("SenZmaKi/Senpwai", &db, client).await.unwrap();
         println!();
-        show_package(&db, "99419gb0", client).await.unwrap();
+        show_package("99419gb0", &db, client).await.unwrap();
     }
 
     #[tokio::test]

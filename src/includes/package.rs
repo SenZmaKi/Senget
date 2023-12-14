@@ -1,10 +1,6 @@
 //! Manages installed package uninstallation and update
 
-use crate::{
-    github::{self, api::Repo, serde_json_types::RepoResponseJson},
-    install::InstallInfo,
-    utils::LoadingAnimation,
-};
+use crate::{github::api::Repo, install::InstallInfo};
 use core::fmt;
 use regex::Regex;
 use reqwest::Client;
@@ -79,10 +75,9 @@ impl Package {
             }
         }
     }
-    pub fn uninstall(&self, loading_animation: &mut LoadingAnimation) -> Result<bool, io::Error> {
+    pub fn uninstall(&self) -> Result<bool, io::Error> {
         match &self.install_info.uninstall_command {
             Some(us) => {
-                    loading_animation.start(format!("Uninstalling {}.. .", self.repo.name));
                 let (program, args) = Package::extract_program_and_args(us);
                 if let Err(err) = Command::new(program).args(args).output() {
                     // TODO: Change this to err.kind() == io::Error::ErrorKind::InvalidFileName when it becomes stable
@@ -90,11 +85,9 @@ impl Package {
                         "The filename, directory name, or volume label syntax is incorrect.",
                     ) {
                         // We assume that if the command didn't work then the user previously uninstalled it themselves
-                        loading_animation.stop();
                         return Ok(false);
                     }
                 }
-                loading_animation.stop();
                 Ok(true)
             }
             None => Ok(false),
@@ -102,8 +95,8 @@ impl Package {
     }
     pub async fn get_installer(
         &self,
-        client: &Client,
         version: &str,
+        client: &Client,
         version_regex: &Regex,
     ) -> Result<Option<Installer>, reqwest::Error> {
         match version {
@@ -116,24 +109,20 @@ impl Package {
         }
     }
 
-    pub async fn update_version(
+    pub fn install_updated_version(
         &self,
-        client: &Client,
         installer: Installer,
-        installer_download_path: &PathBuf,
-        loading_animation: &mut LoadingAnimation,
+        installer_path: &PathBuf,
         startmenu_folders: &(PathBuf, PathBuf),
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
     ) -> Result<Package, RequestIoContentLengthError> {
-        let p = installer.download(installer_download_path, client).await?;
         /* Generation of InstallInfo is pretty wonky, for the execuable_path it checks for
         new shortcut files after installation and for uninstall_command it checks for new registry entries.
         For these reasons there won't probably be any new shortcut files/registry entries if it's an update cause
         the update will just overwride the previously existing shortcut file/registry entry*/
         let install_info = installer.install(
-            &p,
-            loading_animation,
+            &installer_path,
             startmenu_folders,
             user_uninstall_reg_key,
             machine_uninstall_reg_key,
@@ -162,15 +151,10 @@ mod tests {
     use crate::includes::{
         github::api::Repo,
         install::Installer,
-        test_utils::{
-            client, loading_animation, package_installers_dir, senpwai_latest_package,
-            senpwai_package,
-        },
+        test_utils::{client, package_installers_dir, senpwai_latest_package, senpwai_package},
     };
     #[test]
     fn test_uninstalling() {
-        assert!(senpwai_latest_package()
-            .uninstall(&mut loading_animation())
-            .expect("Ok(uninstall)"))
+        assert!(senpwai_latest_package().uninstall().expect("Ok(uninstall)"))
     }
 }

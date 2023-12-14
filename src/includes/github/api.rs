@@ -4,7 +4,7 @@ use crate::{
     github::serde_json_types::{
         AssetsResponseJson, ReleasesResponseJson, RepoResponseJson, SearchResponseJson,
     },
-    includes::{cli, install::Installer},
+    includes::install::Installer,
 };
 use core::fmt;
 use regex::{self, Regex};

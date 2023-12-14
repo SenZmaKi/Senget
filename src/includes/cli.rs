@@ -3,14 +3,11 @@ use crate::includes::commands::{
     install_package, list_packages, run_package, search_repos, show_package, uninstall_package,
 };
 use crate::includes::utils::{APP_NAME, DESCRIPTION, VERSION};
-use crate::includes::{database::PackageDBManager, error::KnownErrors, utils::LoadingAnimation};
+use crate::includes::error::KnownErrors;
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use regex::Regex;
-use reqwest::Client;
 use std::path::PathBuf;
-use winreg::RegKey;
 
-use super::commands::{clear_cached_installers, purge_packages, update_handler};
+use super::commands::{clear_cached_installers, purge_packages, update_handler, Statics};
 
 pub fn parse_commands() -> Command {
     let name_arg = Arg::new("name").help("Name of the package").required(true);
@@ -105,14 +102,7 @@ pub fn parse_commands() -> Command {
 
 pub async fn match_commands(
     commands: Command,
-    db: &mut PackageDBManager,
-    client: &Client,
-    installer_download_path: &PathBuf,
-    version_regex: &Regex,
-    loading_animation: &mut LoadingAnimation,
-    startmenu_folders: &(PathBuf, PathBuf),
-    user_uninstall_reg_key: &RegKey,
-    machine_uninstall_reg_key: &RegKey,
+    statics: &mut Statics,
 ) -> Result<(), KnownErrors> {
     let get_string_value =
         |id: &str, arg_match: &ArgMatches| arg_match.get_one::<String>(id).unwrap().to_owned();
@@ -122,57 +112,41 @@ pub async fn match_commands(
     let get_version = |arg_match: &ArgMatches| get_string_value("version", arg_match);
     let get_path = |arg_match: &ArgMatches| PathBuf::from(get_string_value("path", arg_match));
     match commands.get_matches().subcommand() {
-        Some(("list", _)) => Ok(list_packages(db)),
-        Some(("purge", _)) => purge_packages(db),
-        Some(("clear-cache", _)) => clear_cached_installers(installer_download_path),
-        Some(("run", arg_match)) => run_package(db, &get_name(arg_match)),
-        Some(("show", arg_match)) => show_package(db, &get_name(arg_match), client).await,
-        Some(("search", arg_match)) => search_repos(&get_name(arg_match), client).await,
-        Some(("export", arg_match)) => export_packages(db, &get_path(arg_match)),
+        Some(("list", _)) => Ok(list_packages(&statics.db)),
+        Some(("purge", _)) => purge_packages(&mut statics.db),
+        Some(("clear-cache", _)) => clear_cached_installers(&statics.installer_download_path),
+        Some(("run", arg_match)) => run_package(&get_name(arg_match), &statics.db),
+        Some(("show", arg_match)) => show_package(&get_name(arg_match),&statics.db, &statics.client).await,
+        Some(("search", arg_match)) => search_repos(&get_name(arg_match), &statics.client).await,
+        Some(("export", arg_match)) => export_packages(&get_path(arg_match), &statics.db),
         Some(("uninstall", arg_match)) => uninstall_package(
-            db,
             &get_name(arg_match),
             get_flag("force", arg_match),
-            loading_animation,
+            &mut statics.db,
         ),
         Some(("download", arg_match)) => {
             download_installer(
                 &get_name(arg_match),
-                client,
                 &get_version(arg_match),
-                version_regex,
                 &get_path(arg_match),
+                &statics.client,
+                &statics.version_regex,
             )
             .await
         }
 
         Some(("install", arg_match)) => {
             install_package(
-                db,
                 &get_name(arg_match),
-                client,
                 &get_version(arg_match),
-                version_regex,
-                installer_download_path,
-                loading_animation,
-                startmenu_folders,
-                user_uninstall_reg_key,
-                machine_uninstall_reg_key,
-            )
-            .await
+                statics
+            ).await
         }
         Some(("update", arg_match)) => {
             update_handler(
-                db,
                 &get_name(&arg_match),
-                client,
                 &get_version(&arg_match),
-                version_regex,
-                installer_download_path,
-                loading_animation,
-                startmenu_folders,
-                user_uninstall_reg_key,
-                machine_uninstall_reg_key,
+                statics
             )
             .await
         }
@@ -180,14 +154,7 @@ pub async fn match_commands(
             import_packages(
                 &get_path(arg_match),
                 get_flag("ignore-versions", arg_match),
-                db,
-                client,
-                version_regex,
-                installer_download_path,
-                loading_animation,
-                startmenu_folders,
-                user_uninstall_reg_key,
-                machine_uninstall_reg_key,
+                statics
             )
             .await
         }

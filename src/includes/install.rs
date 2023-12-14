@@ -18,7 +18,7 @@ use winreg::{
 
 use crate::includes::{
     error::{ContentLengthError, RequestIoContentLengthError},
-    utils::{display_path, LoadingAnimation, DEBUG, MSI_EXEC},
+    utils::{display_path, DEBUG, MSI_EXEC},
 };
 
 // Running an msi installer that needs admin access silently is problematic since it won't tell us that it failed
@@ -264,12 +264,10 @@ impl Installer {
     pub fn install(
         &self,
         installer_path: &PathBuf,
-        loading_animation: &mut LoadingAnimation,
         startmenu_folders: &(PathBuf, PathBuf),
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
     ) -> Result<InstallInfo, IOError> {
-        loading_animation.start(format!("Installing {}.. .", self.package_name));
         let user_reg_keys_before = Installer::fetch_reg_keys(user_uninstall_reg_key)?;
         let machine_reg_keys_before = Installer::fetch_reg_keys(machine_uninstall_reg_key)?;
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
@@ -289,7 +287,7 @@ impl Installer {
                     &shortcut_files_before,
                     &startmenu_folders.0,
                 )
-                .or_else(|| {   
+                .or_else(|| {
                     Installer::dynamically_find_package_shortcut(
                         &shortcut_files_before,
                         &startmenu_folders.1,
@@ -310,7 +308,6 @@ impl Installer {
             machine_uninstall_reg_key,
         )?;
 
-        loading_animation.stop();
         Ok(InstallInfo {
             executable_path,
             installation_folder,
@@ -329,7 +326,7 @@ pub struct InstallInfo {
 mod tests {
     use crate::includes::{
         install::Installer,
-        test_utils::{client, loading_animation, package_installers_dir, senpwai_latest_installer},
+        test_utils::{client, package_installers_dir, senpwai_latest_installer},
     };
 
     #[tokio::test]
@@ -347,7 +344,6 @@ mod tests {
         let install_info = senpwai_latest_installer()
             .install(
                 &path,
-                &mut loading_animation(),
                 &&Installer::generate_startmenu_paths(),
                 &Installer::generate_user_uninstall_reg_key().expect("Ok(user_uninstall_reg_key)"),
                 &Installer::generate_machine_uninstall_reg_key()
