@@ -9,7 +9,7 @@ pub struct ContentLengthError;
 
 impl fmt::Debug for ContentLengthError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ContentLengthError: Invalid content length")
+        write!(f, "ContentLength: Invalid content length")
     }
 }
 pub struct PrivilegeError;
@@ -17,12 +17,72 @@ impl fmt::Debug for PrivilegeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "PrivilegeError: Rerun the command in an admin shell, e.g., if you're using Command Prompt, run it as an Administrator"
+            "Rerun the command in an admin shell, e.g., if you're using Command Prompt, run it as an Administrator."
         )
     }
 }
 
-#[derive(Debug)]
+pub struct NetworkError;
+impl fmt::Debug for NetworkError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Check your internet connection and try again.")
+    }
+}
+
+pub struct NoInstalledPackageError;
+impl fmt::Debug for NoInstalledPackageError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "No installed package with the given name found.")
+    }
+}
+
+pub struct NoPackageError;
+impl fmt::Debug for NoPackageError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "No package with the given name found.")
+    }
+}
+
+pub struct NoValidInstallerError;
+impl fmt::Debug for NoValidInstallerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "No valid valid installer found for the package.")
+    }
+}
+pub struct PackageAlreadyInstalledError;
+impl fmt::Debug for PackageAlreadyInstalledError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "The package is already installed.")
+    }
+}
+
+pub struct FailedToUninstallError;
+impl fmt::Debug for FailedToUninstallError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Auto-uninstallation failed. Manually uninstall the package and use --force flag to delete it from the database.")
+    }
+}
+
+pub struct AlreadyUptoDateError;
+impl fmt::Debug for AlreadyUptoDateError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "The package is already up to date.")
+    }
+}
+pub struct VersionAlreadyInstalledError;
+impl fmt::Debug for VersionAlreadyInstalledError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "The version of the package is already installed.")
+    }
+}
+
+pub struct NoExecutableError;
+impl fmt::Debug for NoExecutableError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "No executable found for the package.")
+    }
+}
+
 pub enum KnownErrors {
     RequestError(reqwest::Error),
     IoError(io::Error),
@@ -30,18 +90,67 @@ pub enum KnownErrors {
     PrivilegeError(PrivilegeError),
     RequestIoError(RequestIoError),
     RequestIoContentLengthError(RequestIoContentLengthError),
+    NoExecutableError(NoExecutableError),
+    VersionAlreadyInstalledError(VersionAlreadyInstalledError),
+    AlreadyUptoDateError(AlreadyUptoDateError),
+    FailedToUninstallError(FailedToUninstallError),
+    NoInstalledPackageError(NoInstalledPackageError),
+    NoPackageError(NoPackageError),
+    NoValidInstallerError(NoValidInstallerError),
+    PackageAlreadyInstalledError(PackageAlreadyInstalledError),
+    ContentLengthError(ContentLengthError),
+    NetworkError(NetworkError),
 }
 
-#[derive(Debug)]
+impl fmt::Debug for KnownErrors {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            KnownErrors::NoExecutableError(err) => write!(f, "{:?}", err),
+            KnownErrors::RequestError(err) => write!(f, "{:?}", err),
+            KnownErrors::IoError(err) => write!(f, "{:?}", err),
+            KnownErrors::DatabaseError(err) => write!(f, "{:?}", err),
+            KnownErrors::PrivilegeError(err) => write!(f, "{:?}", err),
+            KnownErrors::RequestIoError(err) => write!(f, "{:?}", err),
+            KnownErrors::RequestIoContentLengthError(err) => write!(f, "{:?}", err),
+            KnownErrors::VersionAlreadyInstalledError(err) => write!(f, "{:?}", err),
+            KnownErrors::AlreadyUptoDateError(err) => write!(f, "{:?}", err),
+            KnownErrors::FailedToUninstallError(err) => write!(f, "{:?}", err),
+            KnownErrors::NoInstalledPackageError(err) => write!(f, "{:?}", err),
+            KnownErrors::NoPackageError(err) => write!(f, "{:?}", err),
+            KnownErrors::NoValidInstallerError(err) => write!(f, "{:?}", err),
+            KnownErrors::PackageAlreadyInstalledError(err) => write!(f, "{:?}", err),
+            KnownErrors::ContentLengthError(err) => write!(f, "{:?}", err),
+            KnownErrors::NetworkError(err) => write!(f, "{:?}", err),
+        }
+    }
+}
+
 pub enum RequestIoContentLengthError {
     RequestIoError(RequestIoError),
     ContentLengthError(ContentLengthError),
 }
 
-#[derive(Debug)]
+impl fmt::Debug for RequestIoContentLengthError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            RequestIoContentLengthError::RequestIoError(err) => write!(f, "{:?}", err),
+            RequestIoContentLengthError::ContentLengthError(err) => write!(f, "{:?}", err),
+        }
+    }
+}
+
 pub enum RequestIoError {
     IoError(io::Error),
     RequestError(reqwest::Error),
+}
+
+impl fmt::Debug for RequestIoError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RequestIoError::IoError(err) => write!(f, "{:?}", err),
+            RequestIoError::RequestError(err) => write!(f, "{:?}", err),
+        }
+    }
 }
 
 impl From<io::Error> for RequestIoError {
@@ -107,15 +216,76 @@ impl From<RequestIoContentLengthError> for KnownErrors {
         KnownErrors::RequestIoContentLengthError(error)
     }
 }
-fn handle_privilege_error(err: KnownErrors) -> KnownErrors {
+
+impl From<NoExecutableError> for KnownErrors {
+    fn from(error: NoExecutableError) -> Self {
+        KnownErrors::NoExecutableError(error)
+    }
+}
+
+impl From<NoInstalledPackageError> for KnownErrors {
+    fn from(error: NoInstalledPackageError) -> Self {
+        KnownErrors::NoInstalledPackageError(error)
+    }
+}
+impl From<VersionAlreadyInstalledError> for KnownErrors {
+    fn from(error: VersionAlreadyInstalledError) -> Self {
+        KnownErrors::VersionAlreadyInstalledError(error)
+    }
+}
+
+impl From<AlreadyUptoDateError> for KnownErrors {
+    fn from(error: AlreadyUptoDateError) -> Self {
+        KnownErrors::AlreadyUptoDateError(error)
+    }
+}
+impl From<FailedToUninstallError> for KnownErrors {
+    fn from(error: FailedToUninstallError) -> Self {
+        KnownErrors::FailedToUninstallError(error)
+    }
+}
+
+impl From<NoPackageError> for KnownErrors {
+    fn from(error: NoPackageError) -> Self {
+        KnownErrors::NoPackageError(error)
+    }
+}
+
+impl From<NoValidInstallerError> for KnownErrors {
+    fn from(error: NoValidInstallerError) -> Self {
+        KnownErrors::NoValidInstallerError(error)
+    }
+}
+
+impl From<PackageAlreadyInstalledError> for KnownErrors {
+    fn from(error: PackageAlreadyInstalledError) -> Self {
+        KnownErrors::PackageAlreadyInstalledError(error)
+    }
+}
+
+impl From<ContentLengthError> for KnownErrors {
+    fn from(error: ContentLengthError) -> Self {
+        KnownErrors::ContentLengthError(error)
+    }
+}
+
+impl From<NetworkError> for KnownErrors {
+    fn from(error: NetworkError) -> Self {
+        KnownErrors::NetworkError(error)
+    }
+}
+
+pub fn check_for_other_errors(err: KnownErrors) -> KnownErrors {
     let str_error = format!("{:?}", err);
     if str_error.contains("The requested operation requires elevation.") {
-        return PrivilegeError.into();
-    };
+        return PrivilegeError.into();                           // Happens when they disconnect for a decent while during an ongoing download
+    } else if str_error.contains("No such host is known.") || str_error.contains("IncompleteBody"){
+        return NetworkError.into();
+    }
     err
 }
 
 pub fn print_error(err: KnownErrors) {
-    let err = handle_privilege_error(err);
+    let err = check_for_other_errors(err);
     eprintln!("\n{:?}", err);
 }
