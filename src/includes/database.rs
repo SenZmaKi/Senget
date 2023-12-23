@@ -14,7 +14,7 @@ pub struct PackageDBManager {
 
 impl PackageDBManager {
     pub fn get_db_file_path(root_dir: &Path) -> Result<PathBuf, io::Error> {
-        let db_folder = root_dir.join("Package-DatabaseH");
+        let db_folder = root_dir.join("Package-Database");
         if !db_folder.is_dir() {
             fs::create_dir(&db_folder)?;
         }

@@ -4,7 +4,7 @@ use std::{
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
-    process::Command,
+    process::Command, os::windows::fs::MetadataExt, u64,
 };
 
 use regex::Regex;
@@ -26,7 +26,7 @@ use super::{
         NoInstalledPackageError, NoPackageError, NoValidInstallerError,
         PackageAlreadyInstalledError, VersionAlreadyInstalledError,
     },
-    utils::EXPORTED_PACKAGES_FILENAME,
+    utils::{EXPORTED_PACKAGES_FILENAME, IBYTES_TO_MBS_DIVISOR},
 };
 
 pub struct Statics {
@@ -85,15 +85,30 @@ pub async fn show_package(
 }
 
 pub fn clear_cached_installers(installer_folder_path: &Path) -> Result<(), KnownErrors> {
+    let mut size = 0;
     for f in installer_folder_path.read_dir()? {
         let f = f?.path();
         if f.is_file() {
+            size += f.metadata()?.file_size();
             fs::remove_file(f)?;
         }
     }
+    println!("Cleared {} MBs", size / IBYTES_TO_MBS_DIVISOR);
     Ok(())
 }
+pub fn fetch_cache_folder_size(root_dir: &Path) -> Result<u64, KnownErrors>
+{
+    let size: u64 = Installer::generate_installer_download_path(root_dir)?.read_dir()?
+        .flatten()
+        .filter(|f| f.path().is_file())
+        .map(|f| f
+        .metadata()
+        .map(|m|m.file_size()))
+        .flatten()
+        .sum();
+    Ok(size / IBYTES_TO_MBS_DIVISOR)
 
+}
 pub fn purge_packages(db: &mut PackageDBManager) -> Result<(), KnownErrors> {
     let mut to_remove: Vec<Package> = Vec::new();
     for p in db.fetch_all_packages() {

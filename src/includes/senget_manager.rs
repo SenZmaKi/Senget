@@ -20,7 +20,7 @@ pub fn generate_senget_package(
 ) -> Result<Package, io::Error> {
     let repo = Repo::new(
         "Senget".to_owned(),
-        "SenZmaKi/Senpwai".to_owned(),
+        "SenZmaKi/Senget".to_owned(),
         "https://github.com/SenZmaKi/Senget".to_owned(),
         Some(description),
         Some("Rust".to_owned()),
