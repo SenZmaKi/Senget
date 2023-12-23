@@ -8,7 +8,6 @@ use tinydb::error::DatabaseError;
 
 use super::{
     database::PackageDBManager,
-    error::KnownErrors,
     github::api::Repo,
     install::{InstallInfo, Installer},
     package::Package,

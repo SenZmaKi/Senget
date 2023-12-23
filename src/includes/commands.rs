@@ -1,9 +1,9 @@
-//! Exposes various command endpoints
+//!Exposes command endpoints
 
 use std::{
     fs::{self, File},
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
 };
 
@@ -39,7 +39,7 @@ pub struct Statics {
 }
 
 impl Statics {
-    pub fn new(root_dir: &PathBuf) -> Result<Statics, KnownErrors> {
+    pub fn new(root_dir: &Path) -> Result<Statics, KnownErrors> {
         let client = setup_client()?;
         let installer_download_path = Installer::generate_installer_download_path(root_dir)?;
         let startmenu_folders = Installer::generate_startmenu_paths();
@@ -84,7 +84,7 @@ pub async fn show_package(
     }
 }
 
-pub fn clear_cached_installers(installer_folder_path: &PathBuf) -> Result<(), KnownErrors> {
+pub fn clear_cached_installers(installer_folder_path: &Path) -> Result<(), KnownErrors> {
     for f in installer_folder_path.read_dir()? {
         let f = f?.path();
         if f.is_file() {
@@ -119,7 +119,7 @@ async fn update_all_packages(
     statics: &Statics,
 ) -> Result<(), KnownErrors> {
     let mut errored_packages: Vec<Vec<String>> = Vec::new();
-    for p in db.fetch_all_packages().to_owned() {
+    for p in db.fetch_all_packages().clone() {
         if let Err(err) = update_package(&p.repo.name, version, db, statics).await {
             match err {
                 KnownErrors::AlreadyUptoDateError(_) => continue,
@@ -147,7 +147,7 @@ async fn update_all_packages(
 pub async fn download_installer(
     name: &str,
     version: &str,
-    download_path: &PathBuf,
+    download_path: &Path,
     client: &Client,
     version_regex: &Regex,
 ) -> Result<(), KnownErrors> {
@@ -161,7 +161,7 @@ async fn internal_download_installer(
     version: &str,
     client: &Client,
     version_regex: &Regex,
-    download_path: &PathBuf,
+    download_path: &Path,
 ) -> Result<(Repo, Installer, PathBuf), KnownErrors> {
     match find_repo(name, client).await? {
         Some(repo) => {
@@ -333,10 +333,8 @@ pub fn generate_table_string(column_headers: &Vec<String>, rows: &Vec<Vec<String
     let number_of_rows = rows.len();
     // Calculate the maximum possible length of a string per column
     let max_length_per_column = (0..number_of_columns)
-        .into_iter()
         .map(|column_idx| {
             (0..number_of_rows)
-                .into_iter()
                 .map(|row_idx: usize| rows[row_idx][column_idx].to_owned())
                 .max_by_key(|item| item.len())
                 .unwrap()
@@ -362,7 +360,7 @@ pub fn generate_table_string(column_headers: &Vec<String>, rows: &Vec<Vec<String
             .collect::<String>()
     };
 
-    let header_str = &format_row(&column_headers);
+    let header_str = &format_row(column_headers);
     let max_char_count_per_row =
         (4 * (number_of_columns - 1)) + max_length_per_column.iter().sum::<usize>();
     let seperator_str = "-".repeat(max_char_count_per_row);
@@ -392,7 +390,7 @@ pub async fn search_repos(query: &str, client: &Client) -> Result<(), KnownError
 }
 
 pub fn export_packages(
-    export_folder_path: &PathBuf,
+    export_folder_path: &Path,
     db: &PackageDBManager,
 ) -> Result<(), KnownErrors> {
     let mut final_str = "".to_owned();
@@ -443,7 +441,6 @@ fn extract_package_name_and_version(
     let mut name_and_version: Vec<(String, String)> = Vec::new();
     for line in fs::read_to_string(export_file_path)?
         .lines()
-        .into_iter()
         .filter(|l| !l.is_empty())
     {
         let mut package_name = line;
@@ -479,6 +476,7 @@ pub fn run_package(name: &str, db: &PackageDBManager) -> Result<(), KnownErrors>
     }
 }
 
+#[cfg(test)]
 mod tests {
     use crate::includes::{
         commands::{list_packages, search_repos, show_package},

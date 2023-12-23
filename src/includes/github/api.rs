@@ -30,7 +30,7 @@ impl fmt::Display for Repo {
         let url = &self.url;
         let language = self.language.to_owned().unwrap_or_default();
         let description = self.description.to_owned().unwrap_or_default();
-        let author = self.full_name.split("/").collect::<Vec<&str>>()[0];
+        let author = self.full_name.split('/').collect::<Vec<&str>>()[0];
         let license = self.license.to_owned().unwrap_or_default();
 
         write!(
@@ -91,7 +91,7 @@ impl Repo {
                     return Ok(Some((r.assets_url, curr_ver.to_owned())));
                 }
             }
-            return Ok(None);
+            Ok(None)
         }
     }
 
@@ -102,21 +102,24 @@ impl Repo {
     ) -> Option<Installer> {
         let mut file_extension = "".to_owned();
         let mut url = "".to_owned();
+        let self_name_lower = &self.name.to_lowercase();
         for asset in assets {
             let name_lower = asset.name.to_lowercase();
-            let inner_file_extension = name_lower.split(".").last().unwrap_or_default();
+            let inner_file_extension = name_lower.split('.').last().unwrap_or_default();
             if inner_file_extension == "exe" || inner_file_extension == "msi" {
                 file_extension = inner_file_extension.to_owned();
-                url = asset.browser_download_url;
                 if inner_file_extension == "msi"
                     || name_lower.contains("installer")
                     || name_lower.contains("setup")
                 {
+                    if url.is_empty() || name_lower.contains(self_name_lower) {
+                        url = asset.browser_download_url
+                    }
                     break;
                 }
             }
         }
-        if url == "" {
+        if url.is_empty() {
             return None;
         }
         Some(Installer::new(
@@ -184,7 +187,6 @@ pub fn extract_repo(repo_response_json: RepoResponseJson) -> Repo {
             .map(|l| l.name.unwrap_or_default()),
     )
 }
-fn get() {}
 pub async fn search(query: &str, client: &reqwest::Client) -> Result<Vec<Repo>, reqwest::Error> {
     let url = format!("{GITHUB_API_ENTRY_POINT}/search/repositories?q={query}&per_page=10");
     let search_response_json: SearchResponseJson = client.get(url).send().await?.json().await?;
@@ -200,31 +202,8 @@ pub mod tests {
 
     use crate::includes::{
         github::api::{search, Repo},
-        test_utils::{client, hatt_repo, senpwai_repo},
+        test_utils::{client, senpwai_repo},
     };
-
-    fn repos() -> Vec<Repo> {
-        vec![
-            senpwai_repo(),
-            hatt_repo(),
-            Repo::new(
-                "NyakaMwizi".to_owned(),
-                "SenZmaKi/NyakaMwizi".to_owned(),
-                "https://github.com/senzmaki/nyakamwizi".to_owned(),
-                Some("A credit card fraud detection machine learning model".to_owned()),
-                Some("Jupyter Notebook".to_owned()),
-                None,
-            ),
-            Repo::new(
-                "Gin-Swagger".to_owned(),
-                "Swaggo/Gin-Swagger".to_owned(),
-                "https://github.com/swaggo/gin-swagger".to_owned(),
-                None,
-                Some("Go".to_owned()),
-                None,
-            ),
-        ]
-    }
 
     #[tokio::test]
     async fn test_search() {
@@ -267,3 +246,4 @@ pub mod tests {
         println!("{:?}", installer);
     }
 }
+

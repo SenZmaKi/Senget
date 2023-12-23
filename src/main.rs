@@ -13,7 +13,6 @@ use includes::{
     },
     utils::{root_dir, DESCRIPTION, VERSION},
 };
-use tokio::runtime::Runtime;
 
 async fn run() -> Result<(), KnownErrors> {
     let commands = cli::parse_commands();
@@ -36,7 +35,9 @@ async fn run() -> Result<(), KnownErrors> {
 #[tokio::main]
 async fn main() {
     if let Err(err) = run().await {
-        // Absolute gigachad error handling 🗿
+        // Absolute gigachad error handling
+        // Average something went wrong fan: 🤓
+        // Average error stack trace enjoyer: 🗿
         print_error(err)
     };
 }

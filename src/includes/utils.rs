@@ -4,9 +4,7 @@ use reqwest::{header, Client};
 use spinners::{Spinner, Spinners};
 use std::{
     env, io,
-    path::PathBuf,
-    sync::{Arc, Condvar, Mutex},
-    thread::{self, JoinHandle},
+    path::{Path, PathBuf},
 };
 
 pub const EXPORTED_PACKAGES_FILENAME: &str = "senget-packages.txt";
@@ -24,7 +22,7 @@ pub fn root_dir() -> PathBuf {
         .into()
 }
 
-pub fn display_path(path: &PathBuf) -> Result<String, io::Error> {
+pub fn display_path(path: &Path) -> Result<String, io::Error> {
     // Remove the weird canonicalised path delimeter e.g.,
     // \\?\C:\Users\PC\OneDrive -> C:\Users\PC\OneDrive
     Ok(path
@@ -57,12 +55,12 @@ pub fn setup_client() -> Result<Client, reqwest::Error> {
         header::USER_AGENT,
         header::HeaderValue::from_static("Senget"),
     );
-    return Ok(Client::builder().default_headers(headers).build()?);
+    Client::builder().default_headers(headers).build()
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::includes::error::{KnownErrors, PrivilegeError};
+    use crate::includes::error::PrivilegeError;
     use crate::includes::utils::loading_animation;
     use std::thread;
     use std::time::Duration;

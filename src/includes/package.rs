@@ -147,12 +147,10 @@ impl Package {
         ))
     }
 }
+
+#[cfg(test)]
 mod tests {
-    use crate::includes::{
-        github::api::Repo,
-        install::Installer,
-        test_utils::{client, package_installers_dir, senpwai_latest_package, senpwai_package},
-    };
+    use crate::includes::test_utils::senpwai_latest_package;
     #[test]
     fn test_uninstalling() {
         assert!(senpwai_latest_package().uninstall().expect("Ok(uninstall)"))

@@ -5,9 +5,8 @@ use lnk::ShellLink;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
-    env, fs,
-    io::{self, Error as IOError},
-    path::PathBuf,
+    env, fs, io,
+    path::{Path, PathBuf},
     process::Command,
 };
 use tokio::io::AsyncWriteExt;
@@ -37,7 +36,7 @@ pub struct Installer {
 }
 impl Installer {
     const UNINSTALL_KEY_STR: &str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
-    pub fn generate_installer_download_path(root_dir: &PathBuf) -> Result<PathBuf, io::Error> {
+    pub fn generate_installer_download_path(root_dir: &Path) -> Result<PathBuf, io::Error> {
         let install_download_path = root_dir.join("Package-Installers");
         if !install_download_path.is_dir() {
             fs::create_dir(&install_download_path)?;
@@ -61,7 +60,7 @@ impl Installer {
     }
     pub async fn download(
         &self,
-        path: &PathBuf,
+        path: &Path,
         client: &reqwest::Client,
     ) -> Result<PathBuf, RequestIoContentLengthError> {
         let path = path.join(&self.file_title);
@@ -74,11 +73,7 @@ impl Installer {
         }
         let mut file = tokio::fs::File::create(&path).await?;
         let mut response = client.get(&self.url).send().await?;
-        let progress_bar = ProgressBar::new(
-            response
-                .content_length()
-                .ok_or_else(|| ContentLengthError)?,
-        );
+        let progress_bar = ProgressBar::new(response.content_length().ok_or(ContentLengthError)?);
         progress_bar.set_style(
             ProgressStyle::default_bar()
                 .template("{msg} {wide_bar} {bytes}/{total_bytes} ({eta} left)")
@@ -102,27 +97,23 @@ impl Installer {
     }
 
     pub fn generate_machine_uninstall_reg_key() -> Result<RegKey, io::Error> {
-        Ok(RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(Installer::UNINSTALL_KEY_STR)?)
+        RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(Installer::UNINSTALL_KEY_STR)
     }
 
     pub fn generate_user_uninstall_reg_key() -> Result<RegKey, io::Error> {
-        Ok(RegKey::predef(HKEY_CURRENT_USER).open_subkey(Installer::UNINSTALL_KEY_STR)?)
+        RegKey::predef(HKEY_CURRENT_USER).open_subkey(Installer::UNINSTALL_KEY_STR)
     }
 
     pub fn generate_startmenu_paths() -> (PathBuf, PathBuf) {
-        let gen = |envvar: &str| {
-            PathBuf::from(
-                env::var(envvar).expect(&format!("{} environment variable to be set", envvar))
-                    + STARTMENU_FOLDER_ENDPOINT,
-            )
-        };
+        let gen =
+            |envvar: &str| PathBuf::from(env::var(envvar).unwrap() + STARTMENU_FOLDER_ENDPOINT);
         (gen("APPDATA"), gen("PROGRAMDATA"))
     }
     fn fetch_shortcut_files(
         files: &mut HashSet<PathBuf>,
         startmenu_folder: &PathBuf,
         check_inner_folders: bool,
-    ) -> Result<(), IOError> {
+    ) -> Result<(), io::Error> {
         for e in startmenu_folder.read_dir()? {
             match e {
                 Ok(e) => {
@@ -139,7 +130,7 @@ impl Installer {
         Ok(())
     }
 
-    fn fetch_reg_keys(parent_regkey: &RegKey) -> Result<HashSet<String>, IOError> {
+    fn fetch_reg_keys(parent_regkey: &RegKey) -> Result<HashSet<String>, io::Error> {
         let mut subkeys = HashSet::<String>::new();
         for entry in parent_regkey.enum_keys() {
             match entry {
@@ -162,7 +153,7 @@ impl Installer {
         Ok(())
     }
 
-    fn statically_generate_package_shortcut(&self, startmenu_folder: &PathBuf) -> Option<PathBuf> {
+    fn statically_generate_package_shortcut(&self, startmenu_folder: &Path) -> Option<PathBuf> {
         let shortcut_file_name = format!("{}.lnk", &self.package_name);
         let shortcut_path = startmenu_folder.join(&shortcut_file_name);
         if shortcut_path.is_file() {
@@ -194,9 +185,7 @@ impl Installer {
             .difference(shortcut_files_before)
             .collect::<Vec<&PathBuf>>();
 
-        new_files
-            .first()
-            .and_then(|f| Some(f.to_owned().to_owned()))
+        new_files.first().map(|f| f.to_owned().to_owned())
     }
 
     fn extract_uninstall_command_from_keys(
@@ -229,12 +218,12 @@ impl Installer {
         machine_reg_keys_before: &HashSet<String>,
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
-    ) -> Result<Option<String>, IOError> {
+    ) -> Result<Option<String>, io::Error> {
         let user_reg_keys_after = Installer::fetch_reg_keys(user_uninstall_reg_key)?;
         let mut uninstall_command = Installer::fetch_uninstall_command_for_key(
             &user_reg_keys_after,
-            &user_reg_keys_before,
-            &user_uninstall_reg_key,
+            user_reg_keys_before,
+            user_uninstall_reg_key,
         );
         if uninstall_command.is_none() {
             let machine_reg_keys_after = Installer::fetch_reg_keys(machine_uninstall_reg_key)?;
@@ -252,14 +241,12 @@ impl Installer {
         Ok(uninstall_command)
     }
     pub fn fetch_uninstall_command_from_executable(
-        installation_folder: &PathBuf,
+        installation_folder: &Path,
     ) -> Result<Option<String>, io::Error> {
-        for e in installation_folder.read_dir()? {
-            if let Ok(e) = e {
-                let file_name = e.file_name().to_str().unwrap().to_lowercase();
-                if file_name.contains("unins") && file_name.ends_with(".exe") {
-                    return Ok(Some(display_path(&e.path())?));
-                }
+        for e in installation_folder.read_dir()?.flatten() {
+            let file_name = e.file_name().to_str().unwrap().to_lowercase();
+            if file_name.contains("unins") && file_name.ends_with(".exe") {
+                return Ok(Some(display_path(&e.path())?));
             }
         }
         Ok(None)
@@ -271,7 +258,7 @@ impl Installer {
         startmenu_folders: &(PathBuf, PathBuf),
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
-    ) -> Result<InstallInfo, IOError> {
+    ) -> Result<InstallInfo, io::Error> {
         let user_reg_keys_before = Installer::fetch_reg_keys(user_uninstall_reg_key)?;
         let machine_reg_keys_before = Installer::fetch_reg_keys(machine_uninstall_reg_key)?;
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
@@ -302,7 +289,7 @@ impl Installer {
 
         let installation_folder = executable_path
             .as_ref()
-            .and_then(|ep| ep.parent().map(|p| PathBuf::from(p)));
+            .and_then(|ep| ep.parent().map(PathBuf::from));
 
         let uninstall_command = Installer::fetch_uninstall_command(
             &installation_folder,
@@ -327,6 +314,7 @@ pub struct InstallInfo {
     pub uninstall_command: Option<String>,
 }
 
+#[cfg(test)]
 mod tests {
     use crate::includes::{
         install::Installer,
@@ -348,7 +336,7 @@ mod tests {
         let install_info = senpwai_latest_installer()
             .install(
                 &path,
-                &&Installer::generate_startmenu_paths(),
+                &Installer::generate_startmenu_paths(),
                 &Installer::generate_user_uninstall_reg_key().expect("Ok(user_uninstall_reg_key)"),
                 &Installer::generate_machine_uninstall_reg_key()
                     .expect("Ok(machine_uninstall_reg_key)"),

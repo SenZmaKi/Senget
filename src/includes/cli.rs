@@ -1,3 +1,5 @@
+//!Parses passed commands and arguments
+
 use crate::includes::commands::{
     download_installer, export_packages, import_packages, install_package, list_packages,
     run_package, search_repos, show_package, uninstall_package,
@@ -115,7 +117,10 @@ pub async fn match_commands(
     let get_version = |arg_match: &ArgMatches| get_string_value("version", arg_match);
     let get_path = |arg_match: &ArgMatches| PathBuf::from(get_string_value("path", arg_match));
     match commands.get_matches().subcommand() {
-        Some(("list", _)) => Ok(list_packages(db)),
+        Some(("list", _)) => {
+            list_packages(db);
+            Ok(())
+        }
         Some(("purge", _)) => purge_packages(db),
         Some(("clear-cache", _)) => clear_cached_installers(&statics.installer_download_path),
         Some(("run", arg_match)) => run_package(&get_name(arg_match), db),
@@ -140,7 +145,7 @@ pub async fn match_commands(
             install_package(&get_name(arg_match), &get_version(arg_match), db, statics).await
         }
         Some(("update", arg_match)) => {
-            update_handler(&get_name(&arg_match), &get_version(&arg_match), db, statics).await
+            update_handler(&get_name(arg_match), &get_version(arg_match), db, statics).await
         }
         Some(("import", arg_match)) => {
             import_packages(

@@ -1,7 +1,11 @@
 //!Manages the database for installed packages
 
 use crate::includes::package::Package;
-use std::{collections::HashSet, fs, io, path::PathBuf};
+use std::{
+    collections::HashSet,
+    fs, io,
+    path::{Path, PathBuf},
+};
 use tinydb::{error::DatabaseError, Database};
 
 pub struct PackageDBManager {
@@ -9,7 +13,7 @@ pub struct PackageDBManager {
 }
 
 impl PackageDBManager {
-    pub fn get_db_file_path(root_dir: &PathBuf) -> Result<PathBuf, io::Error> {
+    pub fn get_db_file_path(root_dir: &Path) -> Result<PathBuf, io::Error> {
         let db_folder = root_dir.join("Package-DatabaseH");
         if !db_folder.is_dir() {
             fs::create_dir(&db_folder)?;
