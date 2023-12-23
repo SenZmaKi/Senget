@@ -1,4 +1,4 @@
-//! Manages package download and installation
+//!Manages package download and installation
 
 use indicatif::{ProgressBar, ProgressStyle};
 use lnk::ShellLink;
@@ -37,8 +37,8 @@ pub struct Installer {
 }
 impl Installer {
     const UNINSTALL_KEY_STR: &str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
-    pub fn generate_installer_download_path() -> Result<PathBuf, io::Error> {
-        let install_download_path = PathBuf::from("Package-Installers");
+    pub fn generate_installer_download_path(root_dir: &PathBuf) -> Result<PathBuf, io::Error> {
+        let install_download_path = root_dir.join("Package-Installers");
         if !install_download_path.is_dir() {
             fs::create_dir(&install_download_path)?;
         }
@@ -240,25 +240,29 @@ impl Installer {
             let machine_reg_keys_after = Installer::fetch_reg_keys(machine_uninstall_reg_key)?;
             uninstall_command = Installer::fetch_uninstall_command_for_key(
                 &machine_reg_keys_after,
-                &machine_reg_keys_before,
-                &machine_uninstall_reg_key,
+                machine_reg_keys_before,
+                machine_uninstall_reg_key,
             );
         }
         if uninstall_command.is_none() && installation_folder.is_some() {
-            for e in installation_folder
-                .as_ref()
-                .expect("installation_folder.is_some()")
-                .read_dir()?
-            {
-                if let Ok(e) = e {
-                    let file_name = e.file_name().to_str().unwrap().to_lowercase();
-                    if file_name.contains("unins") && file_name.ends_with(".exe") {
-                        uninstall_command = Some(display_path(&e.path())?);
-                    }
+            uninstall_command = Installer::fetch_uninstall_command_from_executable(
+                installation_folder.as_ref().expect("is_some"),
+            )?;
+        }
+        Ok(uninstall_command)
+    }
+    pub fn fetch_uninstall_command_from_executable(
+        installation_folder: &PathBuf,
+    ) -> Result<Option<String>, io::Error> {
+        for e in installation_folder.read_dir()? {
+            if let Ok(e) = e {
+                let file_name = e.file_name().to_str().unwrap().to_lowercase();
+                if file_name.contains("unins") && file_name.ends_with(".exe") {
+                    return Ok(Some(display_path(&e.path())?));
                 }
             }
         }
-        Ok(uninstall_command)
+        Ok(None)
     }
 
     pub fn install(
@@ -359,3 +363,4 @@ mod tests {
         assert!(install_info.uninstall_command.is_some());
     }
 }
+

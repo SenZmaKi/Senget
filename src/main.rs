@@ -1,42 +1,42 @@
+//!Main program
+
 mod includes;
 
 use includes::{
     cli::{self, match_commands},
-    error::print_error,
-    utils, commands::Statics,
-    github,
-    install
-
+    commands::Statics,
+    database::PackageDBManager,
+    error::{print_error, KnownErrors},
+    github, install,
+    senget_manager::{
+        check_if_senget_update_available, generate_senget_package, setup_senget_package,
+    },
+    utils::{root_dir, DESCRIPTION, VERSION},
 };
 use tokio::runtime::Runtime;
 
-
-fn main() {
-    let rt = match Runtime::new() {
-        Ok(rt) => rt,
-        Err(err) => {
-            print_error(err.into());
-            return;
-        }
-    };
-
+async fn run() -> Result<(), KnownErrors> {
     let commands = cli::parse_commands();
+    let root_dir = root_dir();
+    let statics = Statics::new(&root_dir)?;
+    let db_save_path = PackageDBManager::get_db_file_path(&root_dir)?;
+    let mut db = PackageDBManager::new(&db_save_path)?;
+    let senget_package =
+        generate_senget_package(root_dir, VERSION.to_owned(), DESCRIPTION.to_owned())?;
+    setup_senget_package(&mut db, &senget_package, VERSION)?;
+    let update_available =
+        check_if_senget_update_available(&senget_package, &statics.client, &statics.version_regex);
+    match_commands(commands, &mut db, &statics).await?;
+    if update_available.await? {
+        println!("Senget update available, run \"senget update senget\" to update");
+    }
+    Ok(())
+}
 
-    rt.block_on(async {
-        if let Err(err) = {
-            let mut statics = match Statics::new() {
-                Ok(ok) => ok,
-                Err(err) => {
-                    print_error(err);
-                    return
-                }
-            };
-            match_commands(
-                commands,
-                &mut statics
-            ).await
-        } {
-            print_error(err);
-        }
-    });
+#[tokio::main]
+async fn main() {
+    if let Err(err) = run().await {
+        // Absolute gigachad error handling 🗿
+        print_error(err)
+    };
 }

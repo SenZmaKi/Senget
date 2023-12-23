@@ -1,3 +1,5 @@
+//! Exposes various command endpoints
+
 use std::{
     fs::{self, File},
     io::Write,
@@ -15,17 +17,19 @@ use crate::includes::{
     github::{self, api::Repo},
     install::Installer,
     package::Package,
-    utils::{display_path, loading_animation, setup_client, APP_NAME_LOWER},
+    utils::{display_path, loading_animation, setup_client},
 };
 
-use super::error::{
-    check_for_other_errors, AlreadyUptoDateError, FailedToUninstallError, NoExecutableError,
-    NoInstalledPackageError, NoPackageError, NoValidInstallerError, PackageAlreadyInstalledError,
-    VersionAlreadyInstalledError,
+use super::{
+    error::{
+        check_for_other_errors, AlreadyUptoDateError, FailedToUninstallError, NoExecutableError,
+        NoInstalledPackageError, NoPackageError, NoValidInstallerError,
+        PackageAlreadyInstalledError, VersionAlreadyInstalledError,
+    },
+    utils::EXPORTED_PACKAGES_FILENAME,
 };
 
 pub struct Statics {
-    pub db: PackageDBManager,
     pub client: Client,
     pub version_regex: Regex,
     pub installer_download_path: PathBuf,
@@ -35,17 +39,14 @@ pub struct Statics {
 }
 
 impl Statics {
-    pub fn new() -> Result<Statics, KnownErrors> {
-        let db_save_path = PackageDBManager::get_db_file_path()?;
-        let db = PackageDBManager::new(&db_save_path)?;
+    pub fn new(root_dir: &PathBuf) -> Result<Statics, KnownErrors> {
         let client = setup_client()?;
-        let installer_download_path = Installer::generate_installer_download_path()?;
+        let installer_download_path = Installer::generate_installer_download_path(root_dir)?;
         let startmenu_folders = Installer::generate_startmenu_paths();
         let user_uninstall_reg_key = Installer::generate_user_uninstall_reg_key()?;
         let machine_uninstall_reg_key = Installer::generate_machine_uninstall_reg_key()?;
         let version_regex = github::api::Repo::generate_version_regex();
         Ok(Statics {
-            db,
             client,
             installer_download_path,
             startmenu_folders,
@@ -60,9 +61,9 @@ async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, KnownErr
     let name_lower = name.to_lowercase();
     let mut found_repo: Option<Repo> = None;
     for r in github::api::search(name, client).await? {
-        if r.full_name.to_lowercase() == name_lower {
-            found_repo = Some(r)
-        } else if found_repo.is_none() && r.name.to_lowercase() == name_lower {
+        if (r.full_name.to_lowercase() == name_lower)
+            || (found_repo.is_none() && r.name.to_lowercase() == name_lower)
+        {
             found_repo = Some(r)
         }
     }
@@ -112,10 +113,14 @@ pub fn purge_packages(db: &mut PackageDBManager) -> Result<(), KnownErrors> {
     Ok(())
 }
 
-async fn update_all_packages(version: &str, statics: &mut Statics) -> Result<(), KnownErrors> {
+async fn update_all_packages(
+    version: &str,
+    db: &mut PackageDBManager,
+    statics: &Statics,
+) -> Result<(), KnownErrors> {
     let mut errored_packages: Vec<Vec<String>> = Vec::new();
-    for p in statics.db.fetch_all_packages().to_owned() {
-        if let Err(err) = update_package(&p.repo.name, version, statics).await {
+    for p in db.fetch_all_packages().to_owned() {
+        if let Err(err) = update_package(&p.repo.name, version, db, statics).await {
             match err {
                 KnownErrors::AlreadyUptoDateError(_) => continue,
                 KnownErrors::VersionAlreadyInstalledError(_) => continue,
@@ -178,10 +183,11 @@ async fn internal_download_installer(
 pub async fn install_package(
     name: &str,
     version: &str,
-    statics: &mut Statics,
+    db: &mut PackageDBManager,
+    statics: &Statics,
 ) -> Result<(), KnownErrors> {
-    match statics.db.find_package(name)? {
-        Some(package) => Err(PackageAlreadyInstalledError.into()),
+    match db.find_package(name)? {
+        Some(_) => Err(PackageAlreadyInstalledError.into()),
         None => {
             let (repo, installer, installer_path) = internal_download_installer(
                 name,
@@ -202,7 +208,7 @@ pub async fn install_package(
             let install_info = loading_animation(format!("Installing {}.. .", repo.name), task)?;
             let package_name = repo.name.to_owned();
             let package = Package::new(installer.version, repo, install_info);
-            statics.db.add_package(package)?;
+            db.add_package(package)?;
             println!("Successfully installed {}.", package_name);
             Ok(())
         }
@@ -234,20 +240,22 @@ pub fn uninstall_package(
 pub async fn update_handler(
     name: &str,
     version: &str,
-    statics: &mut Statics,
+    db: &mut PackageDBManager,
+    statics: &Statics,
 ) -> Result<(), KnownErrors> {
     match name == "all" {
-        true => update_all_packages("latest", statics).await,
-        false => update_package(name, version, statics).await,
+        true => update_all_packages("latest", db, statics).await,
+        false => update_package(name, version, db, statics).await,
     }
 }
 
 async fn update_package(
     name: &str,
     version: &str,
-    statics: &mut Statics,
+    db: &mut PackageDBManager,
+    statics: &Statics,
 ) -> Result<(), KnownErrors> {
-    match statics.db.find_package(name)? {
+    match db.find_package(name)? {
         Some(old_package) => {
             match old_package
                 .get_installer(version, &statics.client, &statics.version_regex)
@@ -279,9 +287,7 @@ async fn update_package(
                             format!("Updating {}.. .", old_package.repo.name),
                             task,
                         )?;
-                        statics
-                            .db
-                            .update_package(&old_package.to_owned(), new_package)?;
+                        db.update_package(&old_package.to_owned(), new_package)?;
                         Ok(())
                     }
                 },
@@ -292,7 +298,7 @@ async fn update_package(
     }
 }
 
-pub fn list_packages(db: &PackageDBManager) -> () {
+pub fn list_packages(db: &PackageDBManager) {
     let packages = db.fetch_all_packages();
     if packages.is_empty() {
         return println!("No packages installed");
@@ -385,9 +391,6 @@ pub async fn search_repos(query: &str, client: &Client) -> Result<(), KnownError
     ))
 }
 
-pub fn exported_packages_filename() -> String {
-    format!("{}-packages.txt", APP_NAME_LOWER)
-}
 pub fn export_packages(
     export_folder_path: &PathBuf,
     db: &PackageDBManager,
@@ -397,7 +400,7 @@ pub fn export_packages(
         let p_entry = format!("{}=={}\n", &p.repo.full_name, &p.version);
         final_str.push_str(&p_entry);
     }
-    let export_file_path = export_folder_path.join(exported_packages_filename());
+    let export_file_path = export_folder_path.join(EXPORTED_PACKAGES_FILENAME);
     let mut f = File::create(&export_file_path)?;
     f.write_all(final_str.as_bytes())?;
     Ok(println!("Exported at {}", display_path(&export_file_path)?))
@@ -406,11 +409,12 @@ pub fn export_packages(
 pub async fn import_packages(
     export_file_path: &PathBuf,
     ignore_versions: bool,
-    statics: &mut Statics,
+    db: &mut PackageDBManager,
+    statics: &Statics,
 ) -> Result<(), KnownErrors> {
     let mut errored_packages: Vec<Vec<String>> = Vec::new();
     for (name, version) in extract_package_name_and_version(export_file_path, ignore_versions)? {
-        if let Err(err) = install_package(&name, &version, statics).await {
+        if let Err(err) = install_package(&name, &version, db, statics).await {
             match err {
                 KnownErrors::PackageAlreadyInstalledError(_) => continue,
                 _ => {
@@ -506,3 +510,4 @@ mod tests {
         list_packages(&db);
     }
 }
+

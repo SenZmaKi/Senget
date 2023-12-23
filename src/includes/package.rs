@@ -1,4 +1,4 @@
-//! Manages installed package uninstallation and update
+//!Manages installed package uninstallation and update
 
 use crate::{github::api::Repo, install::InstallInfo};
 use core::fmt;
@@ -66,7 +66,7 @@ impl Package {
                 // ""C:\Users\PC\AppData\Local\Programs\Miru\Uninstall Miru.exe" /currentuser /s"
                 let mut split = uninstall_command.split("\" ");
                 // "C:\Users\PC\AppData\Local\Programs\Miru\Uninstall Miru.exe"
-                let program = split.next().unwrap_or_default().replace("\"", "");
+                let program = split.next().unwrap_or_default().replace('"', "");
                 // "/currentuser /S"
                 let args_string = split.next().unwrap_or_default();
                 // ["/currentuser", "/S"]
@@ -122,7 +122,7 @@ impl Package {
         For these reasons there won't probably be any new shortcut files/registry entries if it's an update cause
         the update will just overwride the previously existing shortcut file/registry entry*/
         let install_info = installer.install(
-            &installer_path,
+            installer_path,
             startmenu_folders,
             user_uninstall_reg_key,
             machine_uninstall_reg_key,
@@ -158,3 +158,4 @@ mod tests {
         assert!(senpwai_latest_package().uninstall().expect("Ok(uninstall)"))
     }
 }
+

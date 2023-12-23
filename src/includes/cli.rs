@@ -1,13 +1,15 @@
 use crate::includes::commands::{
-    download_installer, export_packages, exported_packages_filename, import_packages,
-    install_package, list_packages, run_package, search_repos, show_package, uninstall_package,
+    download_installer, export_packages, import_packages, install_package, list_packages,
+    run_package, search_repos, show_package, uninstall_package,
 };
-use crate::includes::utils::{APP_NAME, DESCRIPTION, VERSION};
 use crate::includes::error::KnownErrors;
+use crate::includes::utils::{DESCRIPTION, VERSION};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use std::path::PathBuf;
 
 use super::commands::{clear_cached_installers, purge_packages, update_handler, Statics};
+use super::database::PackageDBManager;
+use super::utils::EXPORTED_PACKAGES_FILENAME;
 
 pub fn parse_commands() -> Command {
     let name_arg = Arg::new("name").help("Name of the package").required(true);
@@ -56,7 +58,7 @@ pub fn parse_commands() -> Command {
     let export_command = Command::new("export")
         .about(format!(
             "Export a list of installed packages to a file named {}",
-            exported_packages_filename()
+            EXPORTED_PACKAGES_FILENAME
         ))
         .arg(folder_path_arg(" to save the export file into"));
     let import_command = Command::new("import")
@@ -83,7 +85,7 @@ pub fn parse_commands() -> Command {
                 .default_value("latest"),
         );
 
-    Command::new(APP_NAME)
+    Command::new("Senget")
         .version(VERSION)
         .about(DESCRIPTION)
         .subcommand(show_command)
@@ -102,7 +104,8 @@ pub fn parse_commands() -> Command {
 
 pub async fn match_commands(
     commands: Command,
-    statics: &mut Statics,
+    db: &mut PackageDBManager,
+    statics: &Statics,
 ) -> Result<(), KnownErrors> {
     let get_string_value =
         |id: &str, arg_match: &ArgMatches| arg_match.get_one::<String>(id).unwrap().to_owned();
@@ -112,18 +115,16 @@ pub async fn match_commands(
     let get_version = |arg_match: &ArgMatches| get_string_value("version", arg_match);
     let get_path = |arg_match: &ArgMatches| PathBuf::from(get_string_value("path", arg_match));
     match commands.get_matches().subcommand() {
-        Some(("list", _)) => Ok(list_packages(&statics.db)),
-        Some(("purge", _)) => purge_packages(&mut statics.db),
+        Some(("list", _)) => Ok(list_packages(db)),
+        Some(("purge", _)) => purge_packages(db),
         Some(("clear-cache", _)) => clear_cached_installers(&statics.installer_download_path),
-        Some(("run", arg_match)) => run_package(&get_name(arg_match), &statics.db),
-        Some(("show", arg_match)) => show_package(&get_name(arg_match),&statics.db, &statics.client).await,
+        Some(("run", arg_match)) => run_package(&get_name(arg_match), db),
+        Some(("show", arg_match)) => show_package(&get_name(arg_match), db, &statics.client).await,
         Some(("search", arg_match)) => search_repos(&get_name(arg_match), &statics.client).await,
-        Some(("export", arg_match)) => export_packages(&get_path(arg_match), &statics.db),
-        Some(("uninstall", arg_match)) => uninstall_package(
-            &get_name(arg_match),
-            get_flag("force", arg_match),
-            &mut statics.db,
-        ),
+        Some(("export", arg_match)) => export_packages(&get_path(arg_match), db),
+        Some(("uninstall", arg_match)) => {
+            uninstall_package(&get_name(arg_match), get_flag("force", arg_match), db)
+        }
         Some(("download", arg_match)) => {
             download_installer(
                 &get_name(arg_match),
@@ -136,25 +137,17 @@ pub async fn match_commands(
         }
 
         Some(("install", arg_match)) => {
-            install_package(
-                &get_name(arg_match),
-                &get_version(arg_match),
-                statics
-            ).await
+            install_package(&get_name(arg_match), &get_version(arg_match), db, statics).await
         }
         Some(("update", arg_match)) => {
-            update_handler(
-                &get_name(&arg_match),
-                &get_version(&arg_match),
-                statics
-            )
-            .await
+            update_handler(&get_name(&arg_match), &get_version(&arg_match), db, statics).await
         }
         Some(("import", arg_match)) => {
             import_packages(
                 &get_path(arg_match),
                 get_flag("ignore-versions", arg_match),
-                statics
+                db,
+                statics,
             )
             .await
         }
@@ -164,3 +157,4 @@ pub async fn match_commands(
         )),
     }
 }
+

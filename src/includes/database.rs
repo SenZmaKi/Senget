@@ -1,7 +1,7 @@
-//! Manages the database for installed packages
+//!Manages the database for installed packages
+
 use crate::includes::package::Package;
-use crate::utils::APP_NAME;
-use std::{fs, io, path::PathBuf, collections::HashSet};
+use std::{collections::HashSet, fs, io, path::PathBuf};
 use tinydb::{error::DatabaseError, Database};
 
 pub struct PackageDBManager {
@@ -9,8 +9,8 @@ pub struct PackageDBManager {
 }
 
 impl PackageDBManager {
-    pub fn get_db_file_path() -> Result<PathBuf, io::Error> {
-        let db_folder = PathBuf::from("Package-Database");
+    pub fn get_db_file_path(root_dir: &PathBuf) -> Result<PathBuf, io::Error> {
+        let db_folder = root_dir.join("Package-DatabaseH");
         if !db_folder.is_dir() {
             fs::create_dir(&db_folder)?;
         }
@@ -20,7 +20,7 @@ impl PackageDBManager {
         let db = match save_path.is_file() {
             true => Database::<Package>::from(save_path),
             false => {
-                let res = Database::<Package>::new(APP_NAME, Some(save_path.to_owned()), true);
+                let res = Database::<Package>::new("Senget", Some(save_path.to_owned()), true);
                 Ok(res)
             }
         }?;
@@ -146,3 +146,4 @@ mod tests {
         assert_eq!(*found_package, new_package);
     }
 }
+

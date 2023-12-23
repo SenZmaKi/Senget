@@ -3,19 +3,26 @@
 use reqwest::{header, Client};
 use spinners::{Spinner, Spinners};
 use std::{
-    io,
+    env, io,
     path::PathBuf,
     sync::{Arc, Condvar, Mutex},
     thread::{self, JoinHandle},
 };
 
-pub const APP_NAME: &str = "Senget";
-pub const APP_NAME_LOWER: &str = "senget";
-pub const VERSION: &str = "1.0.0";
-pub const DESCRIPTION: &str = "Github package manager";
+pub const EXPORTED_PACKAGES_FILENAME: &str = "senget-packages.txt";
+pub const VERSION: &str = "0.1.0";
+pub const DESCRIPTION: &str = "Github package manager for windows";
 pub const MSI_EXEC: &str = "MsiExec.exe";
-// TODO set to false on deployment
+// TODO: set to false on deployment
 pub const DEBUG: bool = true;
+
+pub fn root_dir() -> PathBuf {
+    env::current_exe()
+        .expect("Some executable")
+        .parent()
+        .expect("Executable to be in some director")
+        .into()
+}
 
 pub fn display_path(path: &PathBuf) -> Result<String, io::Error> {
     // Remove the weird canonicalised path delimeter e.g.,
@@ -48,7 +55,7 @@ pub fn setup_client() -> Result<Client, reqwest::Error> {
     let mut headers = header::HeaderMap::new();
     headers.insert(
         header::USER_AGENT,
-        header::HeaderValue::from_static(APP_NAME),
+        header::HeaderValue::from_static("Senget"),
     );
     return Ok(Client::builder().default_headers(headers).build()?);
 }
@@ -75,3 +82,4 @@ mod tests {
         assert!(result.is_err());
     }
 }
+
