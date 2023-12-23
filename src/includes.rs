@@ -6,7 +6,6 @@ pub mod github;
 pub mod install;
 pub mod package;
 pub mod senget_manager;
-pub mod some_shit;
 pub mod test_utils;
 pub mod utils;
 

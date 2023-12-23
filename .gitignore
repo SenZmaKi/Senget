@@ -1,2 +1,13 @@
+to-do.txt
+winget-packages.txt
+senget-package.txt
+
 /target
 /.vscode
+/Package-Database
+/Package-Installers
+/Test-Database
+/Test-Package-Installers
+/senget-packages.txt
+/src/includes/github/scraps
+/src/includes/crap.rs
