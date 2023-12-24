@@ -4,7 +4,7 @@ mod includes;
 
 use includes::{
     cli::{self, match_commands},
-    commands::{Statics, fetch_cache_folder_size},
+    commands::{validate_cache_folder_size, Statics},
     database::PackageDBManager,
     error::{print_error, KnownErrors},
     github, install,
@@ -26,10 +26,7 @@ async fn run() -> Result<(), KnownErrors> {
     let update_available =
         check_if_senget_update_available(&senget_package, &statics.client, &statics.version_regex);
     match_commands(commands, &mut db, &statics).await?;
-    let cache_folder_size = fetch_cache_folder_size(&root_dir)?;
-    if cache_folder_size >= 50 {
-        println!("Cache folder is {}MBs, run \"senget clear-cache\" to clean it up", cache_folder_size);
-    }
+    validate_cache_folder_size(&root_dir)?;
     if update_available.await? {
         println!("Senget update available, run \"senget update senget\" to update");
     }

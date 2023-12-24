@@ -106,16 +106,17 @@ impl Repo {
         for asset in assets {
             let name_lower = asset.name.to_lowercase();
             let inner_file_extension = name_lower.split('.').last().unwrap_or_default();
-            if inner_file_extension == "exe" || inner_file_extension == "msi" {
-                file_extension = inner_file_extension.to_owned();
-                if inner_file_extension == "msi"
-                    || name_lower.contains("installer")
-                    || name_lower.contains("setup")
+            let is_msi = inner_file_extension == "msi";
+            if is_msi || inner_file_extension == "exe" {
+                let is_installer = is_msi || name_lower.contains("installer") || name_lower.contains("setup");
+                if url.is_empty() || is_installer
                 {
-                    if url.is_empty() || name_lower.contains(self_name_lower) {
-                        url = asset.browser_download_url
+                    url = asset.browser_download_url;
+                    file_extension = inner_file_extension.to_owned();
+                    let is_perfect_match = is_installer && name_lower.contains(self_name_lower);
+                    if is_perfect_match {
+                            break;
                     }
-                    break;
                 }
             }
         }

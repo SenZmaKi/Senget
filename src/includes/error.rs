@@ -46,7 +46,7 @@ impl fmt::Debug for NoPackageError {
 pub struct NoValidInstallerError;
 impl fmt::Debug for NoValidInstallerError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "No valid valid installer found for the package.")
+        write!(f, "No valid installer found for the package.")
     }
 }
 pub struct PackageAlreadyInstalledError;

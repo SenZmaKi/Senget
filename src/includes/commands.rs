@@ -3,8 +3,10 @@
 use std::{
     fs::{self, File},
     io::Write,
+    os::windows::fs::MetadataExt,
     path::{Path, PathBuf},
-    process::Command, os::windows::fs::MetadataExt, u64,
+    process::Command,
+    u64,
 };
 
 use regex::Regex;
@@ -93,21 +95,24 @@ pub fn clear_cached_installers(installer_folder_path: &Path) -> Result<(), Known
             fs::remove_file(f)?;
         }
     }
-    println!("Cleared {} MBs", size / IBYTES_TO_MBS_DIVISOR);
+    println!("Cleared {}MBs", size / IBYTES_TO_MBS_DIVISOR);
     Ok(())
 }
-pub fn fetch_cache_folder_size(root_dir: &Path) -> Result<u64, KnownErrors>
-{
-    let size: u64 = Installer::generate_installer_download_path(root_dir)?.read_dir()?
+pub fn validate_cache_folder_size(root_dir: &Path) -> Result<(), KnownErrors> {
+    let size: u64 = Installer::generate_installer_download_path(root_dir)?
+        .read_dir()?
         .flatten()
         .filter(|f| f.path().is_file())
-        .map(|f| f
-        .metadata()
-        .map(|m|m.file_size()))
-        .flatten()
+        .flat_map(|f| f.metadata().map(|m| m.file_size()))
         .sum();
-    Ok(size / IBYTES_TO_MBS_DIVISOR)
-
+    let size_mbs = size / IBYTES_TO_MBS_DIVISOR;
+    if size_mbs >= 50 {
+        println!(
+            "Installer cache folder is {}MBs, run \"senget clear-cache\" to clean it up",
+            size_mbs
+        );
+    }
+    Ok(())
 }
 pub fn purge_packages(db: &mut PackageDBManager) -> Result<(), KnownErrors> {
     let mut to_remove: Vec<Package> = Vec::new();
