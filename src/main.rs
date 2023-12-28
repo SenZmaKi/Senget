@@ -7,7 +7,7 @@ use includes::{
     commands::{validate_cache_folder_size, Statics},
     database::PackageDBManager,
     error::{print_error, KnownErrors},
-    github, install,
+    github, dist,
     senget_manager::{
         check_if_senget_update_available, generate_senget_package, setup_senget_package,
     },

@@ -16,11 +16,10 @@ pub const IBYTES_TO_MBS_DIVISOR: u64 = 1024 * 1024;
 pub const DEBUG: bool = true;
 
 pub fn root_dir() -> PathBuf {
-    env::current_exe()
-        .expect("Some executable")
-        .parent()
-        .expect("Executable to be in some director")
-        .into()
+    if DEBUG {
+        return PathBuf::from(".");
+    };
+    env::current_exe().unwrap().parent().unwrap().to_owned()
 }
 
 pub fn display_path(path: &Path) -> Result<String, io::Error> {
@@ -81,4 +80,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-

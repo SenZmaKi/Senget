@@ -20,3 +20,4 @@ lnk = "0.5.1"
 spinners = "4.1.1"
 tinydb = "1"
 clap = { version = "4.4.11" }
+zip = "0.6.6"

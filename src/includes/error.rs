@@ -12,6 +12,12 @@ impl fmt::Debug for ContentLengthError {
         write!(f, "ContentLength: Invalid content length")
     }
 }
+pub struct NoExeFoundError;
+impl fmt::Debug for NoExeFoundError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "No executable found for the unpacked zip file")
+    }
+}
 pub struct PrivilegeError;
 impl fmt::Debug for PrivilegeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -43,10 +49,10 @@ impl fmt::Debug for NoPackageError {
     }
 }
 
-pub struct NoValidInstallerError;
-impl fmt::Debug for NoValidInstallerError {
+pub struct NoValidDistError;
+impl fmt::Debug for NoValidDistError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "No valid installer found for the package.")
+        write!(f, "No valid distributable found for the package.")
     }
 }
 pub struct PackageAlreadyInstalledError;
@@ -96,10 +102,11 @@ pub enum KnownErrors {
     FailedToUninstallError(FailedToUninstallError),
     NoInstalledPackageError(NoInstalledPackageError),
     NoPackageError(NoPackageError),
-    NoValidInstallerError(NoValidInstallerError),
+    NoValidDistError(NoValidDistError),
     PackageAlreadyInstalledError(PackageAlreadyInstalledError),
     ContentLengthError(ContentLengthError),
     NetworkError(NetworkError),
+    ZipIoExeError(ZipIoExeError),
 }
 
 impl fmt::Debug for KnownErrors {
@@ -117,11 +124,41 @@ impl fmt::Debug for KnownErrors {
             KnownErrors::FailedToUninstallError(err) => write!(f, "{:?}", err),
             KnownErrors::NoInstalledPackageError(err) => write!(f, "{:?}", err),
             KnownErrors::NoPackageError(err) => write!(f, "{:?}", err),
-            KnownErrors::NoValidInstallerError(err) => write!(f, "{:?}", err),
+            KnownErrors::NoValidDistError(err) => write!(f, "{:?}", err),
             KnownErrors::PackageAlreadyInstalledError(err) => write!(f, "{:?}", err),
             KnownErrors::ContentLengthError(err) => write!(f, "{:?}", err),
             KnownErrors::NetworkError(err) => write!(f, "{:?}", err),
+            KnownErrors::ZipIoExeError(err) => write!(f, "{:?}", err)
         }
+    }
+}
+
+
+pub enum ZipIoExeError {
+    IoError(io::Error),
+    ZipError(zip::result::ZipError),
+    NoExeFouundError(NoExeFoundError)
+}
+
+impl fmt::Debug for ZipIoExeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ZipIoExeError::IoError(err) => write!(f, "{:?}", err),
+            ZipIoExeError::ZipError(err) => write!(f, "{:?}", err),
+            ZipIoExeError::NoExeFouundError(err) => write!(f, "{:?}", err),
+        }
+    }
+}
+
+impl From<io::Error> for ZipIoExeError {
+    fn from(error: io::Error) -> Self {
+        ZipIoExeError::IoError(error)
+    }
+}
+
+impl From<zip::result::ZipError> for ZipIoExeError {
+    fn from(error: zip::result::ZipError) -> Self {
+        ZipIoExeError::ZipError(error)
     }
 }
 
@@ -180,6 +217,12 @@ impl From<io::Error> for RequestIoContentLengthError {
 impl From<reqwest::Error> for RequestIoContentLengthError {
     fn from(error: reqwest::Error) -> Self {
         RequestIoContentLengthError::RequestIoError(RequestIoError::RequestError(error))
+    }
+}
+
+impl From<ZipIoExeError> for KnownErrors {
+    fn from(error: ZipIoExeError) -> Self {
+        KnownErrors::ZipIoExeError(error)
     }
 }
 
@@ -251,9 +294,9 @@ impl From<NoPackageError> for KnownErrors {
     }
 }
 
-impl From<NoValidInstallerError> for KnownErrors {
-    fn from(error: NoValidInstallerError) -> Self {
-        KnownErrors::NoValidInstallerError(error)
+impl From<NoValidDistError> for KnownErrors {
+    fn from(error: NoValidDistError) -> Self {
+        KnownErrors::NoValidDistError(error)
     }
 }
 

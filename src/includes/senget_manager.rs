@@ -9,7 +9,7 @@ use tinydb::error::DatabaseError;
 use super::{
     database::PackageDBManager,
     github::api::Repo,
-    install::{InstallInfo, Installer},
+    dist::{InstallInfo,  DistType, InstallerDist},
     package::Package,
 };
 
@@ -27,14 +27,19 @@ pub fn generate_senget_package(
         Some("GNU General Public License v3.0".to_owned()),
     );
     let executable_path = Some(root_dir.join("senget.exe"));
-    let uninstall_command = Installer::fetch_uninstall_command_from_executable(&root_dir)?;
+    let uninstall_command = InstallerDist::fetch_uninstall_command_from_executable(&root_dir)?;
     let installation_folder = Some(root_dir);
     let install_info = InstallInfo {
         executable_path,
         installation_folder,
         uninstall_command,
+        dist_type: DistType::Installer,
     };
-    Ok(Package::new(version, repo, install_info))
+    Ok(Package::new(
+        version,
+        repo,
+        install_info,
+    ))
 }
 
 pub fn setup_senget_package(
@@ -49,13 +54,13 @@ pub fn setup_senget_package(
     match db.find_package("Senget")? {
         Some(old_senget_package) => {
             if old_senget_package.version != version {
-                let old_senget_package = &old_senget_package.to_owned();
-                db.update_package(old_senget_package, senget_package.to_owned())?;
+                let old_senget_package = &old_senget_package.clone();
+                db.update_package(old_senget_package, senget_package.clone())?;
             };
             Ok(())
         }
         None => {
-            db.add_package(senget_package.to_owned())?;
+            db.add_package(senget_package.clone())?;
             Ok(())
         }
     }
@@ -66,10 +71,9 @@ pub async fn check_if_senget_update_available(
     client: &Client,
     version_regex: &Regex,
 ) -> Result<bool, reqwest::Error> {
-    let latest_installer = senget_package
+    let latest_dist = senget_package
         .repo
-        .get_latest_installer(client, version_regex)
+        .get_latest_dist(client, version_regex, &Some(DistType::Installer))
         .await?;
-    Ok(latest_installer.is_some())
+    Ok(latest_dist.is_some())
 }
-

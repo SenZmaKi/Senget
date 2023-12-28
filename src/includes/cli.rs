@@ -1,7 +1,7 @@
 //!Parses passed commands and arguments
 
 use crate::includes::commands::{
-    download_installer, export_packages, import_packages, install_package, list_packages,
+    download_package, export_packages, import_packages, install_package, list_packages,
     run_package, search_repos, show_package, uninstall_package,
 };
 use crate::includes::error::KnownErrors;
@@ -9,7 +9,7 @@ use crate::includes::utils::{DESCRIPTION, VERSION};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use std::path::PathBuf;
 
-use super::commands::{clear_cached_installers, purge_packages, update_handler, Statics};
+use super::commands::{clear_cached_distributables, purge_packages, update_handler, Statics};
 use super::database::PackageDBManager;
 use super::utils::EXPORTED_PACKAGES_FILENAME;
 
@@ -34,7 +34,7 @@ pub fn parse_commands() -> Command {
     let list_command = Command::new("list").about("List installed packages");
     let purge_command = Command::new("purge")
         .about("Remove packages that were uninstalled outside senget from the package database");
-    let clear_cache_command = Command::new("clear-cache").about("Clear cached installers");
+    let clear_cache_command = Command::new("clear-cache").about("Clear cached distributables");
     let run_command = Command::new("run").about("Run a package").arg(&name_arg);
     let show_command = Command::new("show")
         .about("Show information about a package")
@@ -53,10 +53,10 @@ pub fn parse_commands() -> Command {
         .arg(&name_arg)
         .arg(&version_arg);
     let download_command = Command::new("download")
-        .about("Download the installer for a package")
+        .about("Download the distributable for a package")
         .arg(&name_arg)
         .arg(&version_arg)
-        .arg(folder_path_arg(" to download the installer into"));
+        .arg(folder_path_arg(" to download the distributable into"));
     let export_command = Command::new("export")
         .about(format!(
             "Export a list of installed packages to a file named {}",
@@ -110,9 +110,9 @@ pub async fn match_commands(
     statics: &Statics,
 ) -> Result<(), KnownErrors> {
     let get_string_value =
-        |id: &str, arg_match: &ArgMatches| arg_match.get_one::<String>(id).unwrap().to_owned();
+        |id: &str, arg_match: &ArgMatches| arg_match.get_one::<String>(id).unwrap().clone();
     let get_flag =
-        |id: &str, arg_match: &ArgMatches| arg_match.get_one::<bool>(id).unwrap().to_owned();
+        |id: &str, arg_match: &ArgMatches| arg_match.get_one::<bool>(id).unwrap().clone();
     let get_name = |arg_match: &ArgMatches| get_string_value("name", arg_match);
     let get_version = |arg_match: &ArgMatches| get_string_value("version", arg_match);
     let get_path = |arg_match: &ArgMatches| PathBuf::from(get_string_value("path", arg_match));
@@ -122,7 +122,7 @@ pub async fn match_commands(
             Ok(())
         }
         Some(("purge", _)) => purge_packages(db),
-        Some(("clear-cache", _)) => clear_cached_installers(&statics.installer_download_path),
+        Some(("clear-cache", _)) => clear_cached_distributables(&statics.dists_folder_path),
         Some(("run", arg_match)) => run_package(&get_name(arg_match), db),
         Some(("show", arg_match)) => show_package(&get_name(arg_match), db, &statics.client).await,
         Some(("search", arg_match)) => search_repos(&get_name(arg_match), &statics.client).await,
@@ -131,18 +131,20 @@ pub async fn match_commands(
             uninstall_package(&get_name(arg_match), get_flag("force", arg_match), db)
         }
         Some(("download", arg_match)) => {
-            download_installer(
+            download_package(
                 &get_name(arg_match),
                 &get_version(arg_match),
-                &get_path(arg_match),
                 &statics.client,
                 &statics.version_regex,
+                &get_path(arg_match),
+                &statics.dists_folder_path,
+                &None,
             )
             .await
         }
 
         Some(("install", arg_match)) => {
-            install_package(&get_name(arg_match), &get_version(arg_match), db, statics).await
+            install_package(&get_name(arg_match), &get_version(arg_match), &None, db, statics).await
         }
         Some(("update", arg_match)) => {
             update_handler(&get_name(arg_match), &get_version(arg_match), db, statics).await

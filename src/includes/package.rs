@@ -1,19 +1,22 @@
 //!Manages installed package uninstallation and update
 
-use crate::{github::api::Repo, install::InstallInfo};
+use crate::{github::api::Repo, dist::InstallInfo};
 use core::fmt;
+use std::fs;
 use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::{io, path::PathBuf, process::Command};
 use winreg::RegKey;
 
-use crate::includes::error::RequestIoContentLengthError;
-
-use super::{
-    install::Installer,
+use crate::includes::{
+    dist::Dist,
     utils::{display_path, MSI_EXEC},
 };
+
+use super::error::KnownErrors;
+use super::dist::{DistType, ExeDist};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
@@ -36,7 +39,11 @@ impl fmt::Display for Package {
     }
 }
 impl Package {
-    pub fn new(version: String, repo: Repo, install_info: InstallInfo) -> Package {
+    pub fn new(
+        version: String,
+        repo: Repo,
+        install_info: InstallInfo,
+    ) -> Package {
         Package {
             version,
             lowercase_name: repo.name.to_lowercase(),
@@ -76,6 +83,13 @@ impl Package {
         }
     }
     pub fn uninstall(&self) -> Result<bool, io::Error> {
+        if self.install_info.dist_type == DistType::Installer {
+            return self.uninstall_installer_package();
+        };
+        fs::remove_dir_all(self.install_info.installation_folder.as_ref().unwrap())?;
+        Ok(true)
+    }
+    fn uninstall_installer_package(&self) -> Result<bool, io::Error> {
         match &self.install_info.uninstall_command {
             Some(us) => {
                 let (program, args) = Package::extract_program_and_args(us);
@@ -93,17 +107,26 @@ impl Package {
             None => Ok(false),
         }
     }
-    pub async fn get_installer(
+    pub async fn get_dist(
         &self,
         version: &str,
         client: &Client,
         version_regex: &Regex,
-    ) -> Result<Option<Installer>, reqwest::Error> {
+    ) -> Result<Option<Dist>, reqwest::Error> {
         match version {
-            "latest" => self.repo.get_latest_installer(client, version_regex).await,
+            "latest" => {
+                self.repo
+                    .get_latest_dist(client, version_regex, &Some(self.install_info.dist_type.clone()))
+                    .await
+            }
             version => {
                 self.repo
-                    .get_installer(client, version, version_regex)
+                    .get_dist(
+                        client,
+                        version,
+                        version_regex,
+                        &Some(self.install_info.dist_type.clone()),
+                    )
                     .await
             }
         }
@@ -111,38 +134,50 @@ impl Package {
 
     pub fn install_updated_version(
         &self,
-        installer: Installer,
-        installer_path: &PathBuf,
+        dist: Dist,
+        dist_path: &Path,
+        packages_folder_path: &Path,
         startmenu_folders: &(PathBuf, PathBuf),
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
-    ) -> Result<Package, RequestIoContentLengthError> {
+    ) -> Result<Package, KnownErrors> {
         /* Generation of InstallInfo is pretty wonky, for the execuable_path it checks for
         new shortcut files after installation and for uninstall_command it checks for new registry entries.
         For these reasons there won't probably be any new shortcut files/registry entries if it's an update cause
         the update will just overwride the previously existing shortcut file/registry entry*/
-        let install_info = installer.install(
-            installer_path,
-            startmenu_folders,
-            user_uninstall_reg_key,
-            machine_uninstall_reg_key,
-        )?;
+        let (install_info, version) = match dist {
+            Dist::Installer(dist) => (
+                dist.install(
+                    dist_path,
+                    startmenu_folders,
+                    user_uninstall_reg_key,
+                    machine_uninstall_reg_key,
+                )?,
+                dist.package_info.version,
+            ),
+            Dist::Exe(dist) => (
+                ExeDist::install(dist_path.to_owned()),
+                dist.package_info.version,
+            ),
+            Dist::Zip(dist) => (
+                dist.install(packages_folder_path, dist_path)?,
+                dist.package_info.version,
+            ),
+        };
         let executable_path = install_info
             .executable_path
-            .or(self.install_info.executable_path.to_owned());
+            .or(self.install_info.executable_path.clone());
         let installation_folder = install_info
             .installation_folder
-            .or(self.install_info.installation_folder.to_owned());
+            .or(self.install_info.installation_folder.clone());
         let uninstall_command = install_info
-            .uninstall_command
-            .or(self.install_info.uninstall_command.to_owned());
-        Ok(Package::new(
-            installer.version,
-            self.repo.to_owned(),
+            .uninstall_command .or(self.install_info.uninstall_command.clone()); let preferred_dist_type = install_info.dist_type; Ok(Package::new( version,
+            self.repo.clone(),
             InstallInfo {
                 executable_path,
                 installation_folder,
                 uninstall_command,
+                dist_type: preferred_dist_type,
             },
         ))
     }
@@ -156,4 +191,3 @@ mod tests {
         assert!(senpwai_latest_package().uninstall().expect("Ok(uninstall)"))
     }
 }
-

@@ -24,7 +24,7 @@ impl PackageDBManager {
         let db = match save_path.is_file() {
             true => Database::<Package>::from(save_path),
             false => {
-                let res = Database::<Package>::new("Senget", Some(save_path.to_owned()), true);
+                let res = Database::<Package>::new("Senget", Some(save_path.clone()), true);
                 Ok(res)
             }
         }?;
@@ -35,7 +35,7 @@ impl PackageDBManager {
         let name_lower = name.to_lowercase();
         let package = self
             .db
-            .query_item(|p| &p.lowercase_fullname, name_lower.to_owned());
+            .query_item(|p| &p.lowercase_fullname, name_lower.clone());
         match package {
             Err(err) => match err {
                 DatabaseError::ItemNotFound => {
@@ -89,7 +89,7 @@ mod tests {
         let mut db_manager = db_manager();
         let added_package = senpwai_latest_package();
         db_manager
-            .add_package(added_package.to_owned())
+            .add_package(added_package.clone())
             .expect("Adding package");
         let found_package = db_manager
             .find_package(&added_package.lowercase_name)
@@ -102,7 +102,7 @@ mod tests {
     fn test_removing_package() {
         let mut db_manager = db_manager();
         let removed_package = senpwai_latest_package();
-        db_manager.add_package(removed_package.to_owned()).unwrap();
+        db_manager.add_package(removed_package.clone()).unwrap();
         db_manager
             .remove_package(&removed_package)
             .expect("Removing package");
@@ -117,7 +117,7 @@ mod tests {
         let mut db_manager = db_manager();
         let package_to_find = senpwai_latest_package();
         db_manager
-            .add_package(package_to_find.to_owned())
+            .add_package(package_to_find.clone())
             .expect("Adding package");
         let found_package = db_manager
             .find_package(&package_to_find.lowercase_name)
@@ -136,12 +136,12 @@ mod tests {
         let mut db_manager = db_manager();
         let old_package = senpwai_latest_package();
         db_manager
-            .add_package(old_package.to_owned())
+            .add_package(old_package.clone())
             .expect("Adding package");
-        let mut new_package = old_package.to_owned();
+        let mut new_package = old_package.clone();
         new_package.version = "3.0.0".to_string();
         db_manager
-            .update_package(&old_package, new_package.to_owned())
+            .update_package(&old_package, new_package.clone())
             .expect("Updating package");
         let found_package = db_manager
             .find_package(&new_package.repo.name)

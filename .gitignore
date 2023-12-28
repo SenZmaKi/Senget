@@ -5,9 +5,9 @@ senget-package.txt
 /target
 /.vscode
 /Package-Database
-/Package-Installers
+/Package-Distributables
 /Test-Database
-/Test-Package-Installers
+/Test-Package-Distributables
 /senget-packages.txt
 /src/includes/github/scraps
 /src/includes/crap.rs

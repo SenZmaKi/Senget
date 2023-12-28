@@ -1,8 +1,8 @@
 //!Exposes command endpoints
 
 use std::{
-    fs::{self, File},
-    io::Write,
+    fs::{self, DirEntry, File},
+    io::{self, Write},
     os::windows::fs::MetadataExt,
     path::{Path, PathBuf},
     process::Command,
@@ -15,18 +15,19 @@ use winreg::RegKey;
 
 use crate::includes::{
     database::PackageDBManager,
+    dist::Dist,
     error::KnownErrors,
     github::{self, api::Repo},
-    install::Installer,
     package::Package,
     utils::{display_path, loading_animation, setup_client},
 };
 
 use super::{
+    dist::{DistType, InstallerDist},
     error::{
         check_for_other_errors, AlreadyUptoDateError, FailedToUninstallError, NoExecutableError,
-        NoInstalledPackageError, NoPackageError, NoValidInstallerError,
-        PackageAlreadyInstalledError, VersionAlreadyInstalledError,
+        NoInstalledPackageError, NoPackageError, NoValidDistError, PackageAlreadyInstalledError,
+        VersionAlreadyInstalledError,
     },
     utils::{EXPORTED_PACKAGES_FILENAME, IBYTES_TO_MBS_DIVISOR},
 };
@@ -34,7 +35,8 @@ use super::{
 pub struct Statics {
     pub client: Client,
     pub version_regex: Regex,
-    pub installer_download_path: PathBuf,
+    pub packages_folder_path: PathBuf,
+    pub dists_folder_path: PathBuf,
     pub startmenu_folders: (PathBuf, PathBuf),
     pub user_uninstall_reg_key: RegKey,
     pub machine_uninstall_reg_key: RegKey,
@@ -43,32 +45,31 @@ pub struct Statics {
 impl Statics {
     pub fn new(root_dir: &Path) -> Result<Statics, KnownErrors> {
         let client = setup_client()?;
-        let installer_download_path = Installer::generate_installer_download_path(root_dir)?;
-        let startmenu_folders = Installer::generate_startmenu_paths();
-        let user_uninstall_reg_key = Installer::generate_user_uninstall_reg_key()?;
-        let machine_uninstall_reg_key = Installer::generate_machine_uninstall_reg_key()?;
+        let packages_path = Dist::generate_packages_folder_path(root_dir)?;
+        let packages_dists_path = Dist::generate_dists_folder_path(root_dir)?;
+        let startmenu_folders = InstallerDist::generate_startmenu_paths();
+        let user_uninstall_reg_key = InstallerDist::generate_user_uninstall_reg_key()?;
+        let machine_uninstall_reg_key = InstallerDist::generate_machine_uninstall_reg_key()?;
         let version_regex = github::api::Repo::generate_version_regex();
         Ok(Statics {
             client,
-            installer_download_path,
+            version_regex,
+            packages_folder_path: packages_path,
+            dists_folder_path: packages_dists_path,
             startmenu_folders,
             user_uninstall_reg_key,
             machine_uninstall_reg_key,
-            version_regex,
         })
     }
 }
 
 async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, KnownErrors> {
     let name_lower = name.to_lowercase();
-    let mut found_repo: Option<Repo> = None;
-    for r in github::api::search(name, client).await? {
-        if (r.full_name.to_lowercase() == name_lower)
-            || (found_repo.is_none() && r.name.to_lowercase() == name_lower)
-        {
-            found_repo = Some(r)
-        }
-    }
+    let found_repo = github::api::search(name, client)
+        .await?
+        .iter()
+        .find(|r| r.name.to_lowercase() == name_lower || r.full_name.to_lowercase() == name_lower)
+        .cloned();
     Ok(found_repo)
 }
 
@@ -86,20 +87,22 @@ pub async fn show_package(
     }
 }
 
-pub fn clear_cached_installers(installer_folder_path: &Path) -> Result<(), KnownErrors> {
-    let mut size = 0;
-    for f in installer_folder_path.read_dir()? {
-        let f = f?.path();
-        if f.is_file() {
-            size += f.metadata()?.file_size();
-            fs::remove_file(f)?;
-        }
-    }
+pub fn clear_cached_distributables(dists_folder_path: &Path) -> Result<(), KnownErrors> {
+    let calc_size = |prev_size: u64, d: Result<DirEntry, io::Error>| -> Result<u64, io::Error> {
+        let p = d?.path();
+        if !p.is_file() {
+            return Ok(prev_size);
+        };
+        fs::remove_file(&p)?;
+        let s = p.metadata()?.file_size();
+        return Ok(prev_size + s);
+    };
+    let size = dists_folder_path.read_dir()?.try_fold(0, calc_size)?;
     println!("Cleared {}MBs", size / IBYTES_TO_MBS_DIVISOR);
     Ok(())
 }
 pub fn validate_cache_folder_size(root_dir: &Path) -> Result<(), KnownErrors> {
-    let size: u64 = Installer::generate_installer_download_path(root_dir)?
+    let size: u64 = Dist::generate_dists_folder_path(root_dir)?
         .read_dir()?
         .flatten()
         .filter(|f| f.path().is_file())
@@ -108,21 +111,25 @@ pub fn validate_cache_folder_size(root_dir: &Path) -> Result<(), KnownErrors> {
     let size_mbs = size / IBYTES_TO_MBS_DIVISOR;
     if size_mbs >= 50 {
         println!(
-            "Installer cache folder is {}MBs, run \"senget clear-cache\" to clean it up",
+            "Distributables cache folder is {}MBs, run \"senget clear-cache\" to clean it up",
             size_mbs
         );
     }
     Ok(())
 }
 pub fn purge_packages(db: &mut PackageDBManager) -> Result<(), KnownErrors> {
-    let mut to_remove: Vec<Package> = Vec::new();
-    for p in db.fetch_all_packages() {
-        if let Some(exe) = p.install_info.executable_path.as_ref() {
-            if !exe.is_file() {
-                to_remove.push(p.to_owned());
-            }
-        }
-    }
+    let to_remove: Vec<Package> = db
+        .fetch_all_packages()
+        .iter()
+        .filter_map(|p| {
+            if let Some(exe) = p.install_info.executable_path.as_ref() {
+                if !exe.is_file() {
+                    return Some(p.clone());
+                }
+            };
+            None
+        })
+        .collect();
     if to_remove.is_empty() {
         return Ok(println!("No packages to purge"));
     }
@@ -164,37 +171,57 @@ async fn update_all_packages(
     Ok(())
 }
 
-pub async fn download_installer(
+pub async fn download_package(
     name: &str,
     version: &str,
-    download_path: &Path,
     client: &Client,
     version_regex: &Regex,
+    packages_folder_path: &Path,
+    dists_folder_path: &Path,
+    preferred_dist_type: &Option<DistType>,
 ) -> Result<(), KnownErrors> {
-    let (_, _, installer_path) =
-        internal_download_installer(name, version, client, version_regex, download_path).await?;
-    println!("Downloaded at {}", display_path(&installer_path)?);
+    let (_, _, dist_path) = internal_download_package(
+        name,
+        version,
+        preferred_dist_type,
+        client,
+        version_regex,
+        packages_folder_path,
+        dists_folder_path,
+    )
+    .await?;
+    println!("Downloaded at {}", display_path(&dist_path)?);
     Ok(())
 }
-async fn internal_download_installer(
+async fn internal_download_package(
     name: &str,
     version: &str,
+    preferred_dist_type: &Option<DistType>,
     client: &Client,
     version_regex: &Regex,
-    download_path: &Path,
-) -> Result<(Repo, Installer, PathBuf), KnownErrors> {
+    packages_folder_path: &Path,
+    dists_folder_path: &Path,
+) -> Result<(Repo, Dist, PathBuf), KnownErrors> {
     match find_repo(name, client).await? {
         Some(repo) => {
-            let installer = match version {
-                "latest" => repo.get_latest_installer(client, version_regex).await?,
-                version => repo.get_installer(client, version, version_regex).await?,
-            };
-            match installer {
-                Some(installer) => {
-                    let installer_path = installer.download(download_path, client).await?;
-                    Ok((repo, installer, installer_path))
+            let dist = match version {
+                "latest" => {
+                    repo.get_latest_dist(client, version_regex, preferred_dist_type)
+                        .await?
                 }
-                None => Err(NoValidInstallerError.into()),
+                version => {
+                    repo.get_dist(client, version, version_regex, preferred_dist_type)
+                        .await?
+                }
+            };
+            match dist {
+                Some(dist) => {
+                    let dist_path = dist
+                        .download(client, packages_folder_path, dists_folder_path)
+                        .await?;
+                    Ok((repo, dist, dist_path))
+                }
+                None => Err(NoValidDistError.into()),
             }
         }
         None => Err(NoPackageError.into()),
@@ -203,31 +230,35 @@ async fn internal_download_installer(
 pub async fn install_package(
     name: &str,
     version: &str,
+    preferred_dist_type: &Option<DistType>,
     db: &mut PackageDBManager,
     statics: &Statics,
 ) -> Result<(), KnownErrors> {
     match db.find_package(name)? {
         Some(_) => Err(PackageAlreadyInstalledError.into()),
         None => {
-            let (repo, installer, installer_path) = internal_download_installer(
+            let (repo, dist, downloaded_package_path) = internal_download_package(
                 name,
                 version,
+                preferred_dist_type,
                 &statics.client,
                 &statics.version_regex,
-                &statics.installer_download_path,
+                &statics.packages_folder_path,
+                &statics.dists_folder_path,
             )
             .await?;
             let task = || {
-                installer.install(
-                    &installer_path,
+                dist.install(
+                    downloaded_package_path,
+                    &statics.packages_folder_path,
                     &statics.startmenu_folders,
                     &statics.user_uninstall_reg_key,
                     &statics.machine_uninstall_reg_key,
                 )
             };
             let install_info = loading_animation(format!("Installing {}.. .", repo.name), task)?;
-            let package_name = repo.name.to_owned();
-            let package = Package::new(installer.version, repo, install_info);
+            let package_name = repo.name.clone();
+            let package = Package::new(dist.version().to_owned(), repo, install_info);
             db.add_package(package)?;
             println!("Successfully installed {}.", package_name);
             Ok(())
@@ -245,9 +276,9 @@ pub fn uninstall_package(
             let task = || package.uninstall();
             let uninstalled =
                 loading_animation(format!("Uninstalling {}", package.repo.name), task)?;
-            let name = package.repo.name.to_owned();
+            let name = package.repo.name.clone();
             if uninstalled || force {
-                db.remove_package(&package.to_owned())?;
+                db.remove_package(&package.clone())?;
                 Ok(println!("Successfully uninstalled {}.", name))
             } else {
                 Err(FailedToUninstallError.into())
@@ -257,6 +288,7 @@ pub fn uninstall_package(
     }
 }
 
+// FIXME: Fix updating into a different distributable e.g., from Exe to Normal
 pub async fn update_handler(
     name: &str,
     version: &str,
@@ -278,10 +310,10 @@ async fn update_package(
     match db.find_package(name)? {
         Some(old_package) => {
             match old_package
-                .get_installer(version, &statics.client, &statics.version_regex)
+                .get_dist(version, &statics.client, &statics.version_regex)
                 .await?
             {
-                Some(installer) => match old_package.version == installer.version {
+                Some(dist) => match old_package.version == dist.version() {
                     true => match version == "latest" {
                         true => Err(AlreadyUptoDateError.into()),
                         false => Err(VersionAlreadyInstalledError.into()),
@@ -289,15 +321,22 @@ async fn update_package(
                     false => {
                         println!(
                             "Updating {} from {} --> {}",
-                            old_package.repo.name, old_package.version, installer.version
+                            old_package.repo.name,
+                            old_package.version,
+                            dist.version()
                         );
-                        let installer_path = installer
-                            .download(&statics.installer_download_path, &statics.client)
+                        let dist_path = dist
+                            .download(
+                                &statics.client,
+                                &statics.packages_folder_path,
+                                &statics.dists_folder_path,
+                            )
                             .await?;
                         let task = || {
                             old_package.install_updated_version(
-                                installer,
-                                &installer_path,
+                                dist,
+                                &dist_path,
+                                &statics.packages_folder_path,
                                 &statics.startmenu_folders,
                                 &statics.user_uninstall_reg_key,
                                 &statics.machine_uninstall_reg_key,
@@ -307,11 +346,11 @@ async fn update_package(
                             format!("Updating {}.. .", old_package.repo.name),
                             task,
                         )?;
-                        db.update_package(&old_package.to_owned(), new_package)?;
+                        db.update_package(&old_package.clone(), new_package)?;
                         Ok(())
                     }
                 },
-                None => Err(NoValidInstallerError.into()),
+                None => Err(NoValidDistError.into()),
             }
         }
         None => Err(NoInstalledPackageError.into()),
@@ -329,13 +368,13 @@ pub fn list_packages(db: &PackageDBManager) {
             let path = p
                 .install_info
                 .executable_path
-                .to_owned()
+                .clone()
                 .map(|p| display_path(&p).unwrap_or_default())
                 .unwrap_or_default();
             vec![
-                p.repo.name.to_owned(),
-                p.version.to_owned(),
-                path.to_owned(),
+                p.repo.name.clone(),
+                p.version.clone(),
+                path.clone(),
             ]
         })
         .collect();
@@ -355,7 +394,7 @@ pub fn generate_table_string(column_headers: &Vec<String>, rows: &Vec<Vec<String
     let max_length_per_column = (0..number_of_columns)
         .map(|column_idx| {
             (0..number_of_rows)
-                .map(|row_idx: usize| rows[row_idx][column_idx].to_owned())
+                .map(|row_idx: usize| rows[row_idx][column_idx].clone())
                 .max_by_key(|item| item.len())
                 .unwrap()
                 .len()
@@ -365,7 +404,7 @@ pub fn generate_table_string(column_headers: &Vec<String>, rows: &Vec<Vec<String
     let max_length_per_column = column_headers
         .iter()
         .zip(max_length_per_column.iter())
-        .map(|(str, max_len)| str.len().max(max_len.to_owned()))
+        .map(|(str, max_len)| str.len().max(max_len.clone()))
         .collect::<Vec<usize>>();
     // Format a row of data
     let last_idx = number_of_columns - 1;
@@ -397,8 +436,8 @@ pub async fn search_repos(query: &str, client: &Client) -> Result<(), KnownError
         .iter()
         .map(|r| {
             vec![
-                r.full_name.to_owned(),
-                r.description.to_owned().unwrap_or_default(),
+                r.full_name.clone(),
+                r.description.clone().unwrap_or_default(),
             ]
         })
         .collect::<Vec<Vec<String>>>();
@@ -413,14 +452,14 @@ pub fn export_packages(
     export_folder_path: &Path,
     db: &PackageDBManager,
 ) -> Result<(), KnownErrors> {
-    let mut final_str = "".to_owned();
-    for p in db.fetch_all_packages() {
-        let p_entry = format!("{}=={}\n", &p.repo.full_name, &p.version);
-        final_str.push_str(&p_entry);
-    }
+    let packages_list = db
+        .fetch_all_packages()
+        .iter()
+        .fold("".to_owned(), |prev, p| {
+            format!("{}{}=={}\n", prev, p.repo.full_name, p.version)
+        });
     let export_file_path = export_folder_path.join(EXPORTED_PACKAGES_FILENAME);
-    let mut f = File::create(&export_file_path)?;
-    f.write_all(final_str.as_bytes())?;
+    File::create(&export_file_path)?.write_all(packages_list.as_bytes())?;
     Ok(println!("Exported at {}", display_path(&export_file_path)?))
 }
 
@@ -432,7 +471,7 @@ pub async fn import_packages(
 ) -> Result<(), KnownErrors> {
     let mut errored_packages: Vec<Vec<String>> = Vec::new();
     for (name, version) in extract_package_name_and_version(export_file_path, ignore_versions)? {
-        if let Err(err) = install_package(&name, &version, db, statics).await {
+        if let Err(err) = install_package(&name, &version, &None, db, statics).await {
             match err {
                 KnownErrors::PackageAlreadyInstalledError(_) => continue,
                 _ => {
@@ -458,27 +497,19 @@ fn extract_package_name_and_version(
     export_file_path: &PathBuf,
     ignore_versions: bool,
 ) -> Result<Vec<(String, String)>, KnownErrors> {
-    let mut name_and_version: Vec<(String, String)> = Vec::new();
-    for line in fs::read_to_string(export_file_path)?
+    let name_and_version = fs::read_to_string(export_file_path)?
         .lines()
-        .filter(|l| !l.is_empty())
-    {
-        let mut package_name = line;
-        let version = match ignore_versions {
-            true => "latest",
-            false => {
-                let split = line.split("==").collect::<Vec<&str>>();
-                match split.len() >= 2 {
-                    true => {
-                        package_name = split[0];
-                        split[1]
-                    }
-                    false => "latest",
-                }
+        .filter_map(|line| {
+            if line.is_empty() {
+                return None;
+            };
+            let split: Vec<&str> = line.split("==").collect();
+            if ignore_versions || split.len() < 2 {
+                return Some((line.to_owned(), "latest".to_owned()));
             }
-        };
-        name_and_version.push((package_name.to_owned(), version.to_owned()));
-    }
+            Some((split[0].to_owned(), split[1].to_owned()))
+        })
+        .collect();
     Ok(name_and_version)
 }
 
@@ -528,4 +559,3 @@ mod tests {
         list_packages(&db);
     }
 }
-

@@ -2,7 +2,7 @@ pub mod utils;
 pub mod cli;
 pub mod commands;
 pub mod github;
-pub mod install;
+pub mod dist;
 pub mod package;
 pub mod database;
 pub mod senget_manager;
