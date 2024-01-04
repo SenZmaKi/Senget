@@ -6,8 +6,8 @@ use crate::includes::commands::{
 };
 use crate::includes::error::KnownErrors;
 use crate::includes::utils::{DESCRIPTION, VERSION};
-use clap::builder::{EnumValueParser, PossibleValuesParser, ValueParser};
-use clap::{Arg, ArgAction, ArgMatches, Command, ValueEnum};
+use clap::builder::EnumValueParser;
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use std::path::PathBuf;
 
 use super::commands::{clear_cached_distributables, purge_packages, update_handler, Statics};
@@ -119,19 +119,19 @@ pub fn parse_commands() -> Command {
 fn get_string_value<'a>(id: &str, arg_match: &'a ArgMatches) -> &'a str {
     arg_match.get_one::<String>(id).unwrap()
 }
-fn get_name<'a>(arg_match: &'a ArgMatches) -> &'a str {
+fn get_name(arg_match: &ArgMatches) -> &str {
     get_string_value("name", arg_match)
 }
 fn get_flag(id: &str, arg_match: &ArgMatches) -> bool {
     *arg_match.get_one::<bool>(id).unwrap()
 }
-fn get_version<'a>(arg_match: &'a ArgMatches) -> &'a str {
+fn get_version(arg_match: &ArgMatches) -> &str {
     get_string_value("version", arg_match)
 }
 fn get_path(arg_match: &ArgMatches) -> PathBuf {
-    PathBuf::from(get_string_value("path", &arg_match))
+    PathBuf::from(get_string_value("path", arg_match))
 }
-fn get_dist_type<'a>(arg_match: &'a ArgMatches) -> Option<&'a DistType> {
+fn get_dist_type(arg_match: &ArgMatches) -> Option<&DistType> {
     arg_match.get_one("dist")
 }
 pub async fn match_commands(
@@ -150,11 +150,9 @@ pub async fn match_commands(
         Some(("show", arg_match)) => show_package(get_name(arg_match), db, &statics.client).await,
         Some(("search", arg_match)) => search_repos(get_name(arg_match), &statics.client).await,
         Some(("export", arg_match)) => export_packages(&get_path(arg_match), db),
-        Some(("uninstall", arg_match)) => uninstall_package(
-            &get_name(arg_match),
-            get_flag("force", arg_match).clone(),
-            db,
-        ),
+        Some(("uninstall", arg_match)) => {
+            uninstall_package(get_name(arg_match), get_flag("force", arg_match), db)
+        }
         Some(("download", arg_match)) => {
             download_package(
                 get_name(arg_match),
@@ -179,12 +177,12 @@ pub async fn match_commands(
             .await
         }
         Some(("update", arg_match)) => {
-            update_handler(&get_name(arg_match), &get_version(arg_match), db, statics).await
+            update_handler(get_name(arg_match), get_version(arg_match), db, statics).await
         }
         Some(("import", arg_match)) => {
             import_packages(
                 &get_path(arg_match),
-                get_flag("ignore-versions", arg_match).clone(),
+                get_flag("ignore-versions", arg_match),
                 db,
                 statics,
             )

@@ -1,11 +1,11 @@
 //!Manages installed package uninstallation and update
 
-use crate::{github::api::Repo, dist::InstallInfo};
+use crate::{dist::InstallInfo, github::api::Repo};
 use core::fmt;
-use std::fs;
 use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::Path;
 use std::{io, path::PathBuf, process::Command};
 use winreg::RegKey;
@@ -15,8 +15,8 @@ use crate::includes::{
     utils::{display_path, MSI_EXEC},
 };
 
-use super::error::KnownErrors;
 use super::dist::{DistType, ExeDist};
+use super::error::KnownErrors;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
@@ -39,11 +39,7 @@ impl fmt::Display for Package {
     }
 }
 impl Package {
-    pub fn new(
-        version: String,
-        repo: Repo,
-        install_info: InstallInfo,
-    ) -> Package {
+    pub fn new(version: String, repo: Repo, install_info: InstallInfo) -> Package {
         Package {
             version,
             lowercase_name: repo.name.to_lowercase(),
@@ -116,7 +112,11 @@ impl Package {
         match version {
             "latest" => {
                 self.repo
-                    .get_latest_dist(client, version_regex, &Some(self.install_info.dist_type.clone()))
+                    .get_latest_dist(
+                        client,
+                        version_regex,
+                        &Some(self.install_info.dist_type.clone()),
+                    )
                     .await
             }
             version => {
@@ -171,7 +171,11 @@ impl Package {
             .installation_folder
             .or(self.install_info.installation_folder.clone());
         let uninstall_command = install_info
-            .uninstall_command .or(self.install_info.uninstall_command.clone()); let preferred_dist_type = install_info.dist_type; Ok(Package::new( version,
+            .uninstall_command
+            .or(self.install_info.uninstall_command.clone());
+        let preferred_dist_type = install_info.dist_type;
+        Ok(Package::new(
+            version,
             self.repo.clone(),
             InstallInfo {
                 executable_path,
@@ -191,3 +195,4 @@ mod tests {
         assert!(senpwai_latest_package().uninstall().expect("Ok(uninstall)"))
     }
 }
+

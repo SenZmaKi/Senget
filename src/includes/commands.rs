@@ -67,9 +67,8 @@ async fn find_repo(name: &str, client: &Client) -> Result<Option<Repo>, KnownErr
     let name_lower = name.to_lowercase();
     let found_repo = github::api::search(name, client)
         .await?
-        .iter()
-        .find(|r| r.name.to_lowercase() == name_lower || r.full_name.to_lowercase() == name_lower)
-        .cloned();
+        .into_iter()
+        .find(|r| r.name.to_lowercase() == name_lower || r.full_name.to_lowercase() == name_lower);
     Ok(found_repo)
 }
 
@@ -95,7 +94,7 @@ pub fn clear_cached_distributables(dists_folder_path: &Path) -> Result<(), Known
         };
         fs::remove_file(&p)?;
         let s = p.metadata()?.file_size();
-        return Ok(prev_size + s);
+        Ok(prev_size + s)
     };
     let size = dists_folder_path.read_dir()?.try_fold(0, calc_size)?;
     println!("Cleared {}MBs", size / IBYTES_TO_MBS_DIVISOR);
@@ -359,9 +358,6 @@ async fn update_package(
 
 pub fn list_packages(db: &PackageDBManager) {
     let packages = db.fetch_all_packages();
-    if packages.is_empty() {
-        return println!("No packages installed");
-    }
     let rows = packages
         .iter()
         .map(|p| {
@@ -371,11 +367,7 @@ pub fn list_packages(db: &PackageDBManager) {
                 .clone()
                 .map(|p| display_path(&p).unwrap_or_default())
                 .unwrap_or_default();
-            vec![
-                p.repo.name.clone(),
-                p.version.clone(),
-                path.clone(),
-            ]
+            vec![p.repo.name.clone(), p.version.clone(), path.clone()]
         })
         .collect();
     let column_headers = vec![
@@ -394,7 +386,7 @@ pub fn generate_table_string(column_headers: &Vec<String>, rows: &Vec<Vec<String
     let max_length_per_column = (0..number_of_columns)
         .map(|column_idx| {
             (0..number_of_rows)
-                .map(|row_idx: usize| rows[row_idx][column_idx].clone())
+                .map(|row_idx: usize| &rows[row_idx][column_idx])
                 .max_by_key(|item| item.len())
                 .unwrap()
                 .len()
@@ -404,7 +396,7 @@ pub fn generate_table_string(column_headers: &Vec<String>, rows: &Vec<Vec<String
     let max_length_per_column = column_headers
         .iter()
         .zip(max_length_per_column.iter())
-        .map(|(str, max_len)| str.len().max(max_len.clone()))
+        .map(|(str, max_len)| str.len().max(*max_len))
         .collect::<Vec<usize>>();
     // Format a row of data
     let last_idx = number_of_columns - 1;
@@ -420,8 +412,7 @@ pub fn generate_table_string(column_headers: &Vec<String>, rows: &Vec<Vec<String
     };
 
     let header_str = &format_row(column_headers);
-    let max_char_count_per_row =
-        (4 * (number_of_columns - 1)) + max_length_per_column.iter().sum::<usize>();
+    let max_char_count_per_row = (4 * (last_idx)) + max_length_per_column.iter().sum::<usize>();
     let seperator_str = "-".repeat(max_char_count_per_row);
     let data_str = rows.iter().map(|r| format_row(r)).collect::<String>();
     format!("{}{}\n{}", header_str, seperator_str, data_str)
@@ -559,3 +550,4 @@ mod tests {
         list_packages(&db);
     }
 }
+

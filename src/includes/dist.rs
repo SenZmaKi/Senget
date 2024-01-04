@@ -48,18 +48,10 @@ impl From<clap::builder::Str> for DistType {
         if value == "zip" {
             return Self::Zip;
         }
-        return Self::Exe;
+        Self::Exe
     }
 }
-impl Into<clap::builder::Str> for DistType {
-    fn into(self) -> clap::builder::Str {
-        match self {
-            Self::Installer => "installer".into(),
-            Self::Zip => "zip".into(),
-            Self::Exe => "exe".into(),
-        }
-    }
-}
+
 /// The type of the distributable
 #[derive(Debug, Clone)]
 pub enum Dist {
@@ -221,7 +213,7 @@ impl ZipDist {
         dists_folder_path: &Path,
         client: &reqwest::Client,
     ) -> Result<PathBuf, RequestIoContentLengthError> {
-        self.package_info.download(&dists_folder_path, client).await
+        self.package_info.download(dists_folder_path, client).await
     }
     fn find_executable_path(
         &self,
@@ -264,12 +256,12 @@ impl ZipDist {
         if !DEBUG {
             fs::remove_file(downloaded_package_path)?;
         }
-        return Ok(InstallInfo {
+        Ok(InstallInfo {
             executable_path,
             installation_folder: Some(package_folder),
             uninstall_command: None,
             dist_type: DistType::Zip,
-        });
+        })
     }
 }
 
@@ -513,7 +505,7 @@ impl InstallerDist {
         };
         executable_path
             .as_ref()
-            .and_then(|path| InstallerDist::find_shortcut_target(&path));
+            .and_then(|path| InstallerDist::find_shortcut_target(path));
         let installation_folder = executable_path
             .as_ref()
             .and_then(|ep| ep.parent().map(PathBuf::from));
