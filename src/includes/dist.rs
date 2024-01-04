@@ -1,5 +1,6 @@
 //!Manages package download and installation
 
+use clap::ValueEnum;
 use indicatif::{ProgressBar, ProgressStyle};
 use lnk::ShellLink;
 use reqwest::Client;
@@ -33,13 +34,32 @@ const INNO_SILENT_ARG: &str = "/VERYSILENT";
 const NSIS_SILENT_ARG: &str = "/S";
 const STARTMENU_FOLDER_ENDPOINT: &str = "\\Microsoft\\Windows\\Start Menu\\Programs";
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(ValueEnum, Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DistType {
     Installer,
     Zip,
     Exe,
 }
-
+impl From<clap::builder::Str> for DistType {
+    fn from(value: clap::builder::Str) -> Self {
+        if value == "installer" {
+            return Self::Installer;
+        }
+        if value == "zip" {
+            return Self::Zip;
+        }
+        return Self::Exe;
+    }
+}
+impl Into<clap::builder::Str> for DistType {
+    fn into(self) -> clap::builder::Str {
+        match self {
+            Self::Installer => "installer".into(),
+            Self::Zip => "zip".into(),
+            Self::Exe => "exe".into(),
+        }
+    }
+}
 /// The type of the distributable
 #[derive(Debug, Clone)]
 pub enum Dist {
@@ -139,13 +159,6 @@ impl PackageInfo {
         client: &reqwest::Client,
     ) -> Result<PathBuf, RequestIoContentLengthError> {
         let path = download_folder_path.join(&self.file_title);
-        if path.is_file() {
-            println!(
-                "Using cached package at: {}",
-                display_path(&path).unwrap_or_default()
-            );
-            return Ok(path);
-        }
         let mut file = File::create(&path)?;
         let mut response = client.get(&self.download_url).send().await?;
         let progress_bar = ProgressBar::new(response.content_length().ok_or(ContentLengthError)?);
@@ -231,8 +244,13 @@ impl ZipDist {
     ) -> Result<InstallInfo, ZipIoExeError> {
         let package_folder = packages_folder_path.join(&self.package_info.name);
         ZipArchive::new(File::open(downloaded_package_path)?)?.extract(&package_folder)?;
-        let extracted_folder_items: Vec<DirEntry> =
-            fs::read_dir(packages_folder_path)?.flatten().collect();
+        let extracted_folder_items = fs::read_dir(packages_folder_path)?.try_fold(
+            Vec::new(),
+            |mut ext_fold_items, de| -> Result<Vec<DirEntry>, io::Error> {
+                ext_fold_items.push(de?);
+                Ok(ext_fold_items)
+            },
+        )?;
         if extracted_folder_items.len() == 1 {
             let path = extracted_folder_items[0].path();
             if path.is_dir() {
@@ -266,6 +284,14 @@ impl InstallerDist {
         dists_folder_path: &Path,
         client: &reqwest::Client,
     ) -> Result<PathBuf, RequestIoContentLengthError> {
+        let prev_installer = dists_folder_path.join(&self.package_info.file_title);
+        if prev_installer.is_file() {
+            println!(
+                "Using cached package at: {}",
+                display_path(&prev_installer).unwrap_or_default()
+            );
+            return Ok(prev_installer);
+        }
         self.package_info.download(dists_folder_path, client).await
     }
 
@@ -557,3 +583,4 @@ mod tests {
         assert!(install_info.uninstall_command.is_some());
     }
 }
+

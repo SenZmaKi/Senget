@@ -2,6 +2,8 @@
 
 mod includes;
 
+use std::path::PathBuf;
+
 use includes::{
     cli::{self, match_commands},
     commands::{validate_cache_folder_size, Statics},

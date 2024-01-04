@@ -122,7 +122,7 @@ pub fn purge_packages(db: &mut PackageDBManager) -> Result<(), KnownErrors> {
         .fetch_all_packages()
         .iter()
         .filter_map(|p| {
-            if let Some(exe) = p.install_info.executable_path.as_ref() {
+            if let Some(exe) = &p.install_info.executable_path {
                 if !exe.is_file() {
                     return Some(p.clone());
                 }
