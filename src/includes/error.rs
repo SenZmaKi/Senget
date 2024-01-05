@@ -1,5 +1,6 @@
 //! Contains error handling utility
 
+use mslnk::MSLinkError;
 use reqwest;
 use std::fmt;
 use std::io;
@@ -117,6 +118,7 @@ pub enum KnownErrors {
     ZipIoExeError(ZipIoExeError),
     SerdeError(serde_json::error::Error),
     ExportFileNotFoundError(ExportFileNotFoundError),
+    MSLinkError(MSLinkError)
 }
 
 impl fmt::Debug for KnownErrors {
@@ -141,6 +143,7 @@ impl fmt::Debug for KnownErrors {
             KnownErrors::ZipIoExeError(err) => write!(f, "{:?}", err),
             KnownErrors::SerdeError(err) => write!(f, "{:?}", err),
             KnownErrors::ExportFileNotFoundError(err) => write!(f, "{:?}", err),
+            KnownErrors::MSLinkError(err) => write!(f, "{:?}", err),
         }
     }
 }
@@ -337,6 +340,11 @@ impl From<ContentLengthError> for KnownErrors {
 impl From<NetworkError> for KnownErrors {
     fn from(error: NetworkError) -> Self {
         KnownErrors::NetworkError(error)
+    }
+}
+impl From<MSLinkError> for KnownErrors {
+    fn from(error: MSLinkError) -> Self {
+        KnownErrors::MSLinkError(error)
     }
 }
 

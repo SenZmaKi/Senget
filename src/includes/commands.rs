@@ -23,7 +23,7 @@ use crate::includes::{
 };
 
 use super::{
-    dist::{DistType, InstallerDist},
+    dist::{DistType, InstallerDist, StartmenuFolders},
     error::{
         check_for_other_errors, AlreadyUptoDateError, FailedToUninstallError, NoExecutableError,
         NoInstalledPackageError, NoPackageError, NoValidDistError, PackageAlreadyInstalledError,
@@ -38,7 +38,7 @@ pub struct Statics {
     pub version_regex: Regex,
     pub packages_folder_path: PathBuf,
     pub dists_folder_path: PathBuf,
-    pub startmenu_folders: (PathBuf, PathBuf),
+    pub startmenu_folders: StartmenuFolders,
     pub user_uninstall_reg_key: RegKey,
     pub machine_uninstall_reg_key: RegKey,
 }
@@ -272,11 +272,12 @@ pub async fn install_package(
 pub fn uninstall_package(
     name: &str,
     force: bool,
+    startmenu_appdata_folder: &Path,
     db: &mut PackageDBManager,
 ) -> Result<(), KnownErrors> {
     match db.find_package(name)? {
         Some(package) => {
-            let task = || package.uninstall();
+            let task = || package.uninstall(startmenu_appdata_folder);
             let uninstalled =
                 loading_animation(format!("Uninstalling {}", package.repo.name), task)?;
             let name = package.repo.name.clone();

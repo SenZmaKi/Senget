@@ -2,7 +2,7 @@
 
 use clap::ValueEnum;
 use indicatif::{ProgressBar, ProgressStyle};
-use lnk::ShellLink;
+use lnk;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -26,7 +26,10 @@ use crate::includes::{
 
 use crate::includes::error::{NoExeFoundError, ZipIoExeError};
 
-use super::utils::{FilenameLower, FolderItems, MoveDirAll, PathStr};
+use super::{
+    error::KnownErrors,
+    utils::{FilenameLower, FolderItems, MoveDirAll, PathStr},
+};
 
 // Running an msi installer that needs admin access silently is problematic since
 // it'll just exit silently without an error if it fails cause of lack of admin access
@@ -35,6 +38,11 @@ use super::utils::{FilenameLower, FolderItems, MoveDirAll, PathStr};
 const INNO_SILENT_ARG: &str = "/VERYSILENT";
 const NSIS_SILENT_ARG: &str = "/S";
 const STARTMENU_FOLDER_ENDPOINT: &str = "\\Microsoft\\Windows\\Start Menu\\Programs";
+
+pub struct StartmenuFolders {
+    pub appdata: PathBuf,
+    pub localappdata: PathBuf,
+}
 
 #[derive(ValueEnum, Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DistType {
@@ -55,7 +63,7 @@ impl From<clap::builder::Str> for DistType {
 }
 
 /// The type of the distributable
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Dist {
     /// Standalone executable distributable
     Exe(ExeDist),
@@ -86,24 +94,53 @@ impl Dist {
         }
     }
 
+    fn create_shorcut_file(
+        package_name: &str,
+        executable_path: &Path,
+        appdata_startmenu_folder: &Path,
+    ) -> Result<(), mslnk::MSLinkError> {
+        // For whatever reason mslnk doesn't work with a normal Path struct, only a String
+        let lnk = mslnk::ShellLink::new(executable_path.path_str()?)?;
+        let lnk_path = appdata_startmenu_folder.join(format!("{}.lnk", package_name));
+        if lnk_path.is_file() {
+            fs::remove_file(&lnk_path)?
+        }
+        lnk.create_lnk(lnk_path)
+    }
+    fn package_info(&self) -> &PackageInfo {
+        match self {
+            Dist::Exe(dist) => &dist.package_info,
+            Dist::Zip(dist) => &dist.package_info,
+            Dist::Installer(dist) => &dist.package_info,
+        }
+    }
+
     pub fn install(
         &self,
         downloaded_package_path: PathBuf,
         packages_folder_path: &Path,
-        startmenu_folders: &(PathBuf, PathBuf),
+        startmenu_folders: &StartmenuFolders,
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
-    ) -> Result<InstallInfo, ZipIoExeError> {
-        match self {
-            Dist::Exe(_) => Ok(ExeDist::install(downloaded_package_path)),
-            Dist::Zip(dist) => dist.install(packages_folder_path, &downloaded_package_path),
-            Dist::Installer(dist) => Ok(dist.install(
+    ) -> Result<InstallInfo, KnownErrors> {
+        let install_info = match self {
+            Dist::Exe(_) => ExeDist::install(downloaded_package_path),
+            Dist::Zip(dist) => dist.install(packages_folder_path, &downloaded_package_path)?,
+            Dist::Installer(dist) => dist.install(
                 &downloaded_package_path,
                 startmenu_folders,
                 user_uninstall_reg_key,
                 machine_uninstall_reg_key,
-            )?),
+            )?,
+        };
+        if !matches!(self, Dist::Installer(_)) {
+            Dist::create_shorcut_file(
+                &self.package_info().name,
+                install_info.executable_path.as_ref().unwrap(),
+                &startmenu_folders.appdata,
+            )?;
         }
+        Ok(install_info)
     }
 
     fn generate_path_from_root(name: &str, root_dir: &Path) -> Result<PathBuf, io::Error> {
@@ -123,7 +160,7 @@ impl Dist {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PackageInfo {
     name: String,
     file_title: String,
@@ -174,7 +211,7 @@ impl PackageInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExeDist {
     pub package_info: PackageInfo,
 }
@@ -204,7 +241,7 @@ impl ExeDist {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ZipDist {
     pub package_info: PackageInfo,
 }
@@ -274,7 +311,7 @@ impl ZipDist {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InstallerDist {
     pub package_info: PackageInfo,
 }
@@ -301,10 +338,15 @@ impl InstallerDist {
         RegKey::predef(HKEY_CURRENT_USER).open_subkey(InstallerDist::UNINSTALL_KEY_STR)
     }
 
-    pub fn generate_startmenu_paths() -> (PathBuf, PathBuf) {
+    pub fn generate_startmenu_paths() -> StartmenuFolders {
         let gen =
             |envvar: &str| PathBuf::from(env::var(envvar).unwrap() + STARTMENU_FOLDER_ENDPOINT);
-        (gen("APPDATA"), gen("PROGRAMDATA"))
+        let appdata = gen("APPDATA");
+        let localappdata = gen("LOCALAPPDATA");
+        StartmenuFolders {
+            appdata,
+            localappdata,
+        }
     }
 
     fn fetch_shortcut_files(
@@ -353,7 +395,7 @@ impl InstallerDist {
     }
 
     fn find_shortcut_target(shortcut_path: &Path) -> Option<PathBuf> {
-        let lnk = ShellLink::open(shortcut_path).ok()?;
+        let lnk = lnk::ShellLink::open(shortcut_path).ok()?;
         let target = lnk.link_info().as_ref()?.local_base_path().as_ref()?;
         Some(PathBuf::from(target))
     }
@@ -455,7 +497,7 @@ impl InstallerDist {
     pub fn install(
         &self,
         installer_path: &Path,
-        startmenu_folders: &(PathBuf, PathBuf),
+        startmenu_folders: &StartmenuFolders,
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
     ) -> Result<InstallInfo, io::Error> {
@@ -464,12 +506,12 @@ impl InstallerDist {
         let mut shortcut_files_before = HashSet::<PathBuf>::new();
         InstallerDist::fetch_shortcut_files(
             &mut shortcut_files_before,
-            &startmenu_folders.0,
+            &startmenu_folders.appdata,
             true,
         )?;
         InstallerDist::fetch_shortcut_files(
             &mut shortcut_files_before,
-            &startmenu_folders.1,
+            &startmenu_folders.localappdata,
             true,
         )?;
         let file_extension = installer_path
@@ -484,20 +526,20 @@ impl InstallerDist {
 
         let self_name_lower = self.package_info.name.to_lowercase();
         let mut executable_path = self
-            .statically_generate_package_shortcut(&startmenu_folders.0)
-            .or_else(|| self.statically_generate_package_shortcut(&startmenu_folders.1));
+            .statically_generate_package_shortcut(&startmenu_folders.appdata)
+            .or_else(|| self.statically_generate_package_shortcut(&startmenu_folders.localappdata));
         if executable_path.is_none() {
             executable_path = InstallerDist::dynamically_find_package_shortcut(
                 &self_name_lower,
                 &shortcut_files_before,
-                &startmenu_folders.0,
+                &startmenu_folders.appdata,
             )?
         };
         if executable_path.is_none() {
             executable_path = InstallerDist::dynamically_find_package_shortcut(
                 &self_name_lower,
                 &shortcut_files_before,
-                &startmenu_folders.1,
+                &startmenu_folders.localappdata,
             )?;
         };
         executable_path

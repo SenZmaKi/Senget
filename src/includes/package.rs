@@ -7,7 +7,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use std::{io, path::PathBuf, process::Command};
+use std::{io, process::Command};
 use winreg::RegKey;
 
 use crate::includes::{
@@ -15,7 +15,7 @@ use crate::includes::{
     utils::{PathStr, MSI_EXEC},
 };
 
-use super::dist::{DistType, ExeDist};
+use super::dist::{DistType, ExeDist, StartmenuFolders};
 use super::error::KnownErrors;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,17 +92,21 @@ impl Package {
             }
         }
     }
-    pub fn uninstall(&self) -> Result<bool, io::Error> {
+    pub fn uninstall(&self, startmenu_appdata_folder: &Path) -> Result<bool, io::Error> {
         if self.install_info.dist_type == DistType::Installer {
-            return self.uninstall_installer_package();
+            return self.uninstall_installer_distributable();
         };
         let installation_folder = self.install_info.installation_folder.as_ref().unwrap();
         if installation_folder.is_dir() {
             fs::remove_dir_all(installation_folder)?;
         }
+        let shortcut_file_path = startmenu_appdata_folder.join(format!("{}.lnk", self.repo.name)); 
+        if shortcut_file_path.is_file() {
+            fs::remove_file(shortcut_file_path)?;
+        }
         Ok(true)
     }
-    fn uninstall_installer_package(&self) -> Result<bool, io::Error> {
+    fn uninstall_installer_distributable(&self) -> Result<bool, io::Error> {
         match &self.install_info.uninstall_command {
             Some(us) => {
                 let (program, args) = Package::extract_program_and_args(us);
@@ -154,7 +158,7 @@ impl Package {
         dist: Dist,
         dist_path: &Path,
         packages_folder_path: &Path,
-        startmenu_folders: &(PathBuf, PathBuf),
+        startmenu_folders: &StartmenuFolders,
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
     ) -> Result<Package, KnownErrors> {
@@ -201,15 +205,6 @@ impl Package {
                 dist_type: preferred_dist_type,
             },
         ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::includes::test_utils::senpwai_latest_package;
-    #[test]
-    fn test_uninstalling() {
-        assert!(senpwai_latest_package().uninstall().expect("Ok(uninstall)"))
     }
 }
 

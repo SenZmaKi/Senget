@@ -95,8 +95,7 @@ fn move_dir_all(from: &Path, to: &Path) -> Result<(), io::Error> {
             fs::rename(item_path, item_to)?;
         }
     }
-    fs::remove_dir(from)?;
-    return Ok(());
+    fs::remove_dir(from)
 }
 pub fn root_dir() -> PathBuf {
     if DEBUG {

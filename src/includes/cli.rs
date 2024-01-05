@@ -149,9 +149,12 @@ pub async fn match_commands(
         Some(("show", arg_match)) => show_package(get_name(arg_match), db, &statics.client).await,
         Some(("search", arg_match)) => search_repos(get_name(arg_match), &statics.client).await,
         Some(("export", arg_match)) => export_packages(&get_path(arg_match), db),
-        Some(("uninstall", arg_match)) => {
-            uninstall_package(get_name(arg_match), get_flag("force", arg_match), db)
-        }
+        Some(("uninstall", arg_match)) => uninstall_package(
+            get_name(arg_match),
+            get_flag("force", arg_match),
+            &statics.startmenu_folders.appdata,
+            db,
+        ),
         Some(("download", arg_match)) => {
             download_package(
                 get_name(arg_match),

@@ -16,8 +16,9 @@ serde_json = { version = "1.0" }
 indicatif = "0.17.7"
 tokio = { version = "1.34.0", features = ["full", "macros"] }
 winreg = "0.52.0"
-lnk = "0.5.1"
+lnk = { version = "0.5.1", features = ["default"] }
 spinners = "4.1.1"
 tinydb = "1"
-clap = { version = "4.4.11" , features = ["derive"]}
+clap = { version = "4.4.11", features = ["derive"] }
 zip = "0.6.6"
+mslnk = "0.1.8"
