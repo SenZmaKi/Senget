@@ -18,6 +18,13 @@ use crate::includes::{
 use super::dist::{DistType, ExeDist};
 use super::error::KnownErrors;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportedPackage {
+    pub lowercase_fullname: String,
+    pub version: String,
+    pub preferred_dist_type: DistType,
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
     pub version: String,
@@ -46,6 +53,13 @@ impl Package {
             lowercase_fullname: repo.full_name.to_lowercase(),
             repo,
             install_info,
+        }
+    }
+    pub fn export(&self) -> ExportedPackage {
+        ExportedPackage {
+            lowercase_fullname: self.lowercase_fullname.clone(),
+            version: self.version.clone(),
+            preferred_dist_type: self.install_info.dist_type.clone(),
         }
     }
     pub fn installation_folder_str(&self) -> String {

@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub const EXPORTED_PACKAGES_FILENAME: &str = "senget-packages.txt";
+pub const EXPORTED_PACKAGES_FILENAME: &str = "senget-packages.json";
 pub const VERSION: &str = "0.1.0";
 pub const DESCRIPTION: &str = "Github package manager for windows";
 pub const MSI_EXEC: &str = "MsiExec.exe";
@@ -84,7 +84,7 @@ fn move_dir_all(from: &Path, to: &Path) -> Result<(), io::Error> {
         let item_to = &to.join(item.file_name());
         let item_path = item.path();
         if item_path.is_dir() {
-            move_dir_all(&item_path, &item_to)?;
+            move_dir_all(&item_path, item_to)?;
         } else {
             if item_to.is_file() {
                 dbg!(item_to);
@@ -133,7 +133,7 @@ pub fn setup_client() -> Result<Client, reqwest::Error> {
 
 #[cfg(test)]
 mod tests {
-    use crate::includes::utils::{loading_animation, PathStr};
+    use crate::includes::utils::loading_animation;
     use crate::includes::{error::PrivilegeError, utils::FolderItems};
     use std::thread;
     use std::time::Duration;

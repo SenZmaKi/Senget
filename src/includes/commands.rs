@@ -2,7 +2,7 @@
 
 use std::{
     fs::{self, DirEntry, File},
-    io::{self, Write},
+    io::{self, Read, Write},
     os::windows::fs::MetadataExt,
     path::{Path, PathBuf},
     process::Command,
@@ -27,8 +27,9 @@ use super::{
     error::{
         check_for_other_errors, AlreadyUptoDateError, FailedToUninstallError, NoExecutableError,
         NoInstalledPackageError, NoPackageError, NoValidDistError, PackageAlreadyInstalledError,
-        VersionAlreadyInstalledError,
+        VersionAlreadyInstalledError, ExportFileNotFoundError,
     },
+    package::ExportedPackage,
     utils::{EXPORTED_PACKAGES_FILENAME, IBYTES_TO_MBS_DIVISOR},
 };
 
@@ -96,7 +97,8 @@ pub fn clear_cached_distributables(dists_folder_path: &Path) -> Result<(), Known
         let s = p.metadata()?.file_size();
         Ok(prev_size + s)
     };
-    let size = dists_folder_path.fetch_folder_items()?
+    let size = dists_folder_path
+        .fetch_folder_items()?
         .into_iter()
         .try_fold(0, calc_size)?;
     println!("Cleared {}MBs", size / IBYTES_TO_MBS_DIVISOR);
@@ -289,7 +291,7 @@ pub fn uninstall_package(
     }
 }
 
-// FIXME: Fix updating into a different distributable e.g., from Exe to Normal
+// FIXME: Fix updating into a different distributable e.g., from Exe to Installer
 pub async fn update_handler(
     name: &str,
     version: &str,
@@ -366,7 +368,7 @@ pub fn list_packages(db: &PackageDBManager) {
             let path = p
                 .install_info
                 .executable_path
-                .clone()
+                .as_ref()
                 .map(|p| p.path_str().unwrap_or_default())
                 .unwrap_or_default();
             vec![p.repo.name.clone(), p.version.clone(), path.clone()]
@@ -445,14 +447,16 @@ pub fn export_packages(
     export_folder_path: &Path,
     db: &PackageDBManager,
 ) -> Result<(), KnownErrors> {
-    let packages_list = db
-        .fetch_all_packages()
-        .iter()
-        .fold("".to_owned(), |prev, p| {
-            format!("{}{}=={}\n", prev, p.repo.full_name, p.version)
-        });
+    let exported_packages: Vec<ExportedPackage> =
+        db.fetch_all_packages()
+            .iter()
+            .fold(Vec::new(), |mut prev, p| {
+                prev.push(p.export());
+                prev
+            });
     let export_file_path = export_folder_path.join(EXPORTED_PACKAGES_FILENAME);
-    File::create(&export_file_path)?.write_all(packages_list.as_bytes())?;
+    let json_string = serde_json::to_string_pretty(&exported_packages)?;
+    File::create(&export_file_path)?.write_all(json_string.as_bytes())?;
     Ok(println!("Exported at {}", export_file_path.path_str()?))
 }
 
@@ -463,13 +467,29 @@ pub async fn import_packages(
     statics: &Statics,
 ) -> Result<(), KnownErrors> {
     let mut errored_packages: Vec<Vec<String>> = Vec::new();
-    for (name, version) in extract_package_name_and_version(export_file_path, ignore_versions)? {
-        if let Err(err) = install_package(&name, &version, &None, db, statics).await {
+    let mut package_str = String::new();
+    if !export_file_path.is_file() {
+        return Err(ExportFileNotFoundError.into());
+    }
+    File::open(export_file_path)?.read_to_string(&mut package_str)?;
+    let packages: Vec<ExportedPackage> = serde_json::from_str(&package_str)?;
+    for p in packages {
+        let version = if ignore_versions{"latest"} else {&p.version};
+        if let Err(err) = install_package(
+            &p.lowercase_fullname,
+            version,
+            &Some(p.preferred_dist_type),
+            db,
+            statics,
+        )
+        .await
+        {
             match err {
                 KnownErrors::PackageAlreadyInstalledError(_) => continue,
-                _ => {
-                    errored_packages.push(vec![name, format!("{:?}", check_for_other_errors(err))])
-                }
+                _ => errored_packages.push(vec![
+                    p.lowercase_fullname,
+                    format!("{:?}", check_for_other_errors(err)),
+                ]),
             }
         }
     }
@@ -484,26 +504,6 @@ pub async fn import_packages(
         ),
     };
     Ok(())
-}
-
-fn extract_package_name_and_version(
-    export_file_path: &PathBuf,
-    ignore_versions: bool,
-) -> Result<Vec<(String, String)>, KnownErrors> {
-    let name_and_version = fs::read_to_string(export_file_path)?
-        .lines()
-        .filter_map(|line| {
-            if line.is_empty() {
-                return None;
-            };
-            let split: Vec<&str> = line.split("==").collect();
-            if ignore_versions || split.len() < 2 {
-                return Some((line.to_owned(), "latest".to_owned()));
-            }
-            Some((split[0].to_owned(), split[1].to_owned()))
-        })
-        .collect();
-    Ok(name_and_version)
 }
 
 pub fn run_package(name: &str, db: &PackageDBManager) -> Result<(), KnownErrors> {

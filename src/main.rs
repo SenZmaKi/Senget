@@ -38,7 +38,7 @@ async fn main() {
     if let Err(err) = run().await {
         // Absolute gigachad error handling
         // Average something went wrong fan: 🤓
-        // Average error stack trace enjoyer: 🗿
+        // Average full error stack trace enjoyer: 🗿
         print_error(err)
     };
 }

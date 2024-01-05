@@ -12,6 +12,14 @@ impl fmt::Debug for ContentLengthError {
         write!(f, "ContentLength: Invalid content length")
     }
 }
+pub struct ExportFileNotFoundError;
+
+impl fmt::Debug for ExportFileNotFoundError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Export file not found")
+    }
+}
+
 pub struct NoExeFoundError;
 impl fmt::Debug for NoExeFoundError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -107,6 +115,8 @@ pub enum KnownErrors {
     ContentLengthError(ContentLengthError),
     NetworkError(NetworkError),
     ZipIoExeError(ZipIoExeError),
+    SerdeError(serde_json::error::Error),
+    ExportFileNotFoundError(ExportFileNotFoundError),
 }
 
 impl fmt::Debug for KnownErrors {
@@ -128,16 +138,17 @@ impl fmt::Debug for KnownErrors {
             KnownErrors::PackageAlreadyInstalledError(err) => write!(f, "{:?}", err),
             KnownErrors::ContentLengthError(err) => write!(f, "{:?}", err),
             KnownErrors::NetworkError(err) => write!(f, "{:?}", err),
-            KnownErrors::ZipIoExeError(err) => write!(f, "{:?}", err)
+            KnownErrors::ZipIoExeError(err) => write!(f, "{:?}", err),
+            KnownErrors::SerdeError(err) => write!(f, "{:?}", err),
+            KnownErrors::ExportFileNotFoundError(err) => write!(f, "{:?}", err),
         }
     }
 }
 
-
 pub enum ZipIoExeError {
     IoError(io::Error),
     ZipError(zip::result::ZipError),
-    NoExeFouundError(NoExeFoundError)
+    NoExeFouundError(NoExeFoundError),
 }
 
 impl fmt::Debug for ZipIoExeError {
@@ -247,10 +258,21 @@ impl From<tinydb::error::DatabaseError> for KnownErrors {
         KnownErrors::DatabaseError(error)
     }
 }
+impl From<ExportFileNotFoundError> for KnownErrors {
+    fn from(err: ExportFileNotFoundError) -> Self {
+        KnownErrors::ExportFileNotFoundError(err)
+    }
+}
 
 impl From<RequestIoError> for KnownErrors {
     fn from(error: RequestIoError) -> Self {
         KnownErrors::RequestIoError(error)
+    }
+}
+
+impl From<serde_json::error::Error> for KnownErrors {
+    fn from(error: serde_json::error::Error) -> Self {
+        KnownErrors::SerdeError(error)
     }
 }
 
@@ -321,8 +343,8 @@ impl From<NetworkError> for KnownErrors {
 pub fn check_for_other_errors(err: KnownErrors) -> KnownErrors {
     let str_error = format!("{:?}", err);
     if str_error.contains("The requested operation requires elevation.") {
-        return PrivilegeError.into();                           // Happens when they disconnect for a decent while during an ongoing download
-    } else if str_error.contains("No such host is known.") || str_error.contains("IncompleteBody"){
+        return PrivilegeError.into(); // Happens when they disconnect for a decent while during an ongoing download
+    } else if str_error.contains("No such host is known.") || str_error.contains("IncompleteBody") {
         return NetworkError.into();
     }
     err
@@ -332,3 +354,4 @@ pub fn print_error(err: KnownErrors) {
     let err = check_for_other_errors(err);
     eprintln!("\n{:?}", err);
 }
+

@@ -22,11 +22,12 @@ pub fn parse_commands() -> Command {
         .long("version")
         .help("Version of the package")
         .default_value("latest");
-    let folder_path_arg = |help: &str| {
+    let path_arg = |help: &str| {
         Arg::new("path")
             .default_value(".")
-            .help(format!("Path to the folder{}", help))
+            .help(format!("Path to {}", help))
     };
+    let folder_path_arg = |help: &str| path_arg(&format!("the folder {}", help));
     let force_flag_arg = |help: &str| {
         Arg::new("force")
             .short('f')
@@ -48,7 +49,7 @@ pub fn parse_commands() -> Command {
         .about("Show information about a package")
         .arg(&name_arg);
     let search_command = Command::new("search")
-        .about("Search and list packages on github that match the specified name")
+        .about("Search and list packages that match the specified name")
         .arg(&name_arg);
     let uninstall_command = Command::new("uninstall")
         .about("Uninstall a package")
@@ -76,17 +77,15 @@ pub fn parse_commands() -> Command {
     let import_command = Command::new("import")
         .about("Import a list of packages by installing")
         .arg(
-            Arg::new("path")
-                .help("Path to file containing the list of packages")
-                // FIXME: Update this in case I ever change crate::includes::commands::exported_packages_filename()
-                .default_value("senget-packages.txt"),
+            path_arg("to the export file containing the list of packages")
+                .default_value(EXPORTED_PACKAGES_FILENAME),
         )
         .arg(
             Arg::new("ignore-versions")
-                .long("ignore-versions")
                 .short('i')
+                .long("ignore-versions")
                 .action(ArgAction::SetTrue)
-                .help("Ignore the versions in the file and install the latest packages"),
+                .help("Install the latest versions instead of the versions in the file"),
         );
     let update_command = Command::new("update")
         .about("Update/Downgrade a package")
