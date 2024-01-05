@@ -19,7 +19,7 @@ use crate::includes::{
     error::KnownErrors,
     github::{self, api::Repo},
     package::Package,
-    utils::{display_path, loading_animation, setup_client},
+    utils::{loading_animation, setup_client, FolderItems, PathStr},
 };
 
 use super::{
@@ -87,8 +87,8 @@ pub async fn show_package(
 }
 
 pub fn clear_cached_distributables(dists_folder_path: &Path) -> Result<(), KnownErrors> {
-    let calc_size = |prev_size: u64, d: Result<DirEntry, io::Error>| -> Result<u64, io::Error> {
-        let p = d?.path();
+    let calc_size = |prev_size: u64, d: DirEntry| -> Result<u64, io::Error> {
+        let p = d.path();
         if !p.is_file() {
             return Ok(prev_size);
         };
@@ -96,14 +96,16 @@ pub fn clear_cached_distributables(dists_folder_path: &Path) -> Result<(), Known
         let s = p.metadata()?.file_size();
         Ok(prev_size + s)
     };
-    let size = dists_folder_path.read_dir()?.try_fold(0, calc_size)?;
+    let size = dists_folder_path.fetch_folder_items()?
+        .into_iter()
+        .try_fold(0, calc_size)?;
     println!("Cleared {}MBs", size / IBYTES_TO_MBS_DIVISOR);
     Ok(())
 }
 pub fn validate_cache_folder_size(root_dir: &Path) -> Result<(), KnownErrors> {
     let size: u64 = Dist::generate_dists_folder_path(root_dir)?
-        .read_dir()?
-        .flatten()
+        .fetch_folder_items()?
+        .iter()
         .filter(|f| f.path().is_file())
         .flat_map(|f| f.metadata().map(|m| m.file_size()))
         .sum();
@@ -189,7 +191,7 @@ pub async fn download_package(
         dists_folder_path,
     )
     .await?;
-    println!("Downloaded at {}", display_path(&dist_path)?);
+    println!("Downloaded at {}", dist_path.path_str()?);
     Ok(())
 }
 async fn internal_download_package(
@@ -365,7 +367,7 @@ pub fn list_packages(db: &PackageDBManager) {
                 .install_info
                 .executable_path
                 .clone()
-                .map(|p| display_path(&p).unwrap_or_default())
+                .map(|p| p.path_str().unwrap_or_default())
                 .unwrap_or_default();
             vec![p.repo.name.clone(), p.version.clone(), path.clone()]
         })
@@ -451,7 +453,7 @@ pub fn export_packages(
         });
     let export_file_path = export_folder_path.join(EXPORTED_PACKAGES_FILENAME);
     File::create(&export_file_path)?.write_all(packages_list.as_bytes())?;
-    Ok(println!("Exported at {}", display_path(&export_file_path)?))
+    Ok(println!("Exported at {}", export_file_path.path_str()?))
 }
 
 pub async fn import_packages(
@@ -508,6 +510,9 @@ pub fn run_package(name: &str, db: &PackageDBManager) -> Result<(), KnownErrors>
     match db.find_package(name)? {
         Some(p) => match &p.install_info.executable_path {
             Some(ep) => {
+                if !ep.is_file() {
+                    return Err(NoExecutableError.into());
+                }
                 println!("Starting {}.. .", p.repo.name);
                 Command::new(ep).spawn()?;
                 Ok(())

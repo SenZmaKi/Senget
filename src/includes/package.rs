@@ -12,7 +12,7 @@ use winreg::RegKey;
 
 use crate::includes::{
     dist::Dist,
-    utils::{display_path, MSI_EXEC},
+    utils::{PathStr, MSI_EXEC},
 };
 
 use super::dist::{DistType, ExeDist};
@@ -52,7 +52,7 @@ impl Package {
         self.install_info
             .installation_folder
             .as_ref()
-            .map(|f| display_path(f).unwrap_or_default())
+            .map(|f| f.path_str().unwrap_or_default())
             .unwrap_or_default()
     }
 
@@ -82,7 +82,10 @@ impl Package {
         if self.install_info.dist_type == DistType::Installer {
             return self.uninstall_installer_package();
         };
-        fs::remove_dir_all(self.install_info.installation_folder.as_ref().unwrap())?;
+        let installation_folder = self.install_info.installation_folder.as_ref().unwrap();
+        if installation_folder.is_dir() {
+            fs::remove_dir_all(installation_folder)?;
+        }
         Ok(true)
     }
     fn uninstall_installer_package(&self) -> Result<bool, io::Error> {

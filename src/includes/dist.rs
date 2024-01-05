@@ -21,10 +21,12 @@ use zip::ZipArchive;
 
 use crate::includes::{
     error::{ContentLengthError, RequestIoContentLengthError},
-    utils::{display_path, DEBUG, MSI_EXEC},
+    utils::{DEBUG, MSI_EXEC},
 };
 
 use crate::includes::error::{NoExeFoundError, ZipIoExeError};
+
+use super::utils::{FilenameLower, FolderItems, MoveDirAll, PathStr};
 
 // Running an msi installer that needs admin access silently is problematic since
 // it'll just exit silently without an error if it fails cause of lack of admin access
@@ -113,7 +115,7 @@ impl Dist {
     }
 
     pub fn generate_dists_folder_path(root_dir: &Path) -> Result<PathBuf, io::Error> {
-        Self::generate_path_from_root("Package-Installers", root_dir)
+        Self::generate_path_from_root("Package-Distributables", root_dir)
     }
 
     pub fn generate_packages_folder_path(root_dir: &Path) -> Result<PathBuf, io::Error> {
@@ -167,7 +169,7 @@ impl PackageInfo {
             progress += chunk.len() as u64;
             progress_bar.set_position(progress);
         }
-        progress_bar.finish_with_message("Download complete");
+        progress_bar.finish_with_message("Download complete\n");
         Ok(path)
     }
 }
@@ -213,6 +215,12 @@ impl ZipDist {
         dists_folder_path: &Path,
         client: &reqwest::Client,
     ) -> Result<PathBuf, RequestIoContentLengthError> {
+        if DEBUG {
+            let path = dists_folder_path.join(&self.package_info.file_title);
+            if path.is_file() {
+                return Ok(path);
+            }
+        }
         self.package_info.download(dists_folder_path, client).await
     }
     fn find_executable_path(
@@ -221,7 +229,7 @@ impl ZipDist {
     ) -> Result<Option<PathBuf>, io::Error> {
         let self_lower_name = self.package_info.name.to_lowercase();
         let found_exe = extracted_folder_items.into_iter().find_map(|de| {
-            let lower_file_name = de.file_name().to_str().unwrap_or_default().to_lowercase();
+            let lower_file_name = de.path().filename_lower();
             if lower_file_name.ends_with("exe") && lower_file_name.contains(&self_lower_name) {
                 return Some(de.path());
             }
@@ -229,36 +237,37 @@ impl ZipDist {
         });
         Ok(found_exe)
     }
+    fn find_actual_unzip_dir(packages_folder_path: PathBuf) -> Result<PathBuf, io::Error> {
+        let folder_items = packages_folder_path.fetch_folder_items()?;
+        // != 1 instead of > 1 so that if the folder is empty we dont get array bounds error at folder_items[0]
+        if folder_items.len() != 1 {
+            return Ok(packages_folder_path);
+        }
+        ZipDist::find_actual_unzip_dir(folder_items[0].path())
+    }
     pub fn install(
         &self,
         packages_folder_path: &Path,
         downloaded_package_path: &Path,
     ) -> Result<InstallInfo, ZipIoExeError> {
-        let package_folder = packages_folder_path.join(&self.package_info.name);
-        ZipArchive::new(File::open(downloaded_package_path)?)?.extract(&package_folder)?;
-        let extracted_folder_items = fs::read_dir(packages_folder_path)?.try_fold(
-            Vec::new(),
-            |mut ext_fold_items, de| -> Result<Vec<DirEntry>, io::Error> {
-                ext_fold_items.push(de?);
-                Ok(ext_fold_items)
-            },
-        )?;
-        if extracted_folder_items.len() == 1 {
-            let path = extracted_folder_items[0].path();
-            if path.is_dir() {
-                fs::rename(path, &package_folder)?;
-            }
-        }
-        let executable_path = self.find_executable_path(extracted_folder_items)?;
-        if executable_path.is_none() {
-            return Err(ZipIoExeError::NoExeFouundError(NoExeFoundError));
+        let installation_folder = packages_folder_path.join(&self.package_info.name);
+        ZipArchive::new(File::open(downloaded_package_path)?)?.extract(&installation_folder)?;
+        let unzip_dir = ZipDist::find_actual_unzip_dir(installation_folder.to_owned())?;
+        if unzip_dir != installation_folder {
+            unzip_dir.move_dir_all(&installation_folder)?;
         }
         if !DEBUG {
             fs::remove_file(downloaded_package_path)?;
         }
+        let executable_path =
+            self.find_executable_path(installation_folder.fetch_folder_items()?)?;
+        if executable_path.is_none() {
+            fs::remove_dir_all(installation_folder)?;
+            return Err(ZipIoExeError::NoExeFouundError(NoExeFoundError));
+        }
         Ok(InstallInfo {
             executable_path,
-            installation_folder: Some(package_folder),
+            installation_folder: Some(installation_folder),
             uninstall_command: None,
             dist_type: DistType::Zip,
         })
@@ -278,10 +287,7 @@ impl InstallerDist {
     ) -> Result<PathBuf, RequestIoContentLengthError> {
         let prev_installer = dists_folder_path.join(&self.package_info.file_title);
         if prev_installer.is_file() {
-            println!(
-                "Using cached package at: {}",
-                display_path(&prev_installer).unwrap_or_default()
-            );
+            println!("Using cached package at: {}", prev_installer.path_str()?);
             return Ok(prev_installer);
         }
         self.package_info.download(dists_folder_path, client).await
@@ -306,17 +312,12 @@ impl InstallerDist {
         startmenu_folder: &Path,
         check_inner_folders: bool,
     ) -> Result<(), io::Error> {
-        for e in startmenu_folder.read_dir()? {
-            match e {
-                Ok(e) => {
-                    let e = e.path();
-                    if e.is_file() && e.ends_with(".lnk") {
-                        files.insert(e);
-                    } else if check_inner_folders && e.is_dir() {
-                        InstallerDist::fetch_shortcut_files(files, startmenu_folder, false)?;
-                    }
-                }
-                Err(err) => return Err(err),
+        for e in startmenu_folder.fetch_folder_items()? {
+            let e = e.path();
+            if e.is_file() && e.ends_with(".lnk") {
+                files.insert(e);
+            } else if check_inner_folders && e.is_dir() {
+                InstallerDist::fetch_shortcut_files(files, startmenu_folder, false)?;
             }
         }
         Ok(())
@@ -367,13 +368,7 @@ impl InstallerDist {
 
         let found_shortcut = shortcut_files_after
             .difference(shortcut_files_before)
-            .find(|s| {
-                s.file_name()
-                    .unwrap_or_default()
-                    .to_str()
-                    .unwrap_or_default()
-                    .contains(target_name_lower)
-            })
+            .find(|s| s.filename_lower().contains(target_name_lower))
             .cloned();
         Ok(found_shortcut)
     }
@@ -446,10 +441,12 @@ impl InstallerDist {
     pub fn fetch_uninstall_command_from_executable(
         installation_folder: &Path,
     ) -> Result<Option<String>, io::Error> {
-        for e in installation_folder.read_dir()?.flatten() {
-            let file_name = e.file_name().to_str().unwrap().to_lowercase();
-            if file_name.contains("unins") && file_name.ends_with(".exe") {
-                return Ok(Some(display_path(&e.path())?));
+        for e in installation_folder.fetch_folder_items()?.iter() {
+            let e_path = e.path();
+            let file_name_lower = e_path.filename_lower();
+            if file_name_lower.contains("unins") && file_name_lower.ends_with(".exe") {
+                let some_path = Some(e_path.path_str()?);
+                return Ok(some_path);
             }
         }
         Ok(None)

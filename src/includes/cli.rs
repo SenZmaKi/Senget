@@ -78,7 +78,7 @@ pub fn parse_commands() -> Command {
         .arg(
             Arg::new("path")
                 .help("Path to file containing the list of packages")
-                // TODO: Update this in case I ever change crate::includes::commands::exported_packages_filename()
+                // FIXME: Update this in case I ever change crate::includes::commands::exported_packages_filename()
                 .default_value("senget-packages.txt"),
         )
         .arg(

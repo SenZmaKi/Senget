@@ -4,6 +4,7 @@ senget-package.txt
 
 /target
 /.vscode
+/Packages
 /Package-Database
 /Package-Distributables
 /Test-Database

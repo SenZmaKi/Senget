@@ -308,7 +308,8 @@ pub mod tests {
         };
         assert_eq!(dist.package_info.version, "0.3.5");
     }
-
+    
+    #[tokio::test]
     async fn test_getting_exe_distributable() {
         let dist = hatt_repo()
             .get_dist(
