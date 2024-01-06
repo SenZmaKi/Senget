@@ -5,10 +5,11 @@ use indicatif::{ProgressBar, ProgressStyle};
 use lnk;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::{
     collections::HashSet,
     env,
-    fs::{self, DirEntry, File},
+    fs::{self, File},
     io::{self, Write},
     path::{Path, PathBuf},
     process::Command,
@@ -28,7 +29,7 @@ use crate::includes::error::{NoExeFoundError, ZipIoExeError};
 
 use super::{
     error::KnownErrors,
-    utils::{FilenameLower, FolderItems, MoveDirAll, PathStr},
+    utils::{FilenameLower, FolderItems, MoveDirAll, PathStr, Take},
 };
 
 // Running an msi installer that needs admin access silently is problematic since
@@ -38,10 +39,11 @@ use super::{
 const INNO_SILENT_ARG: &str = "/VERYSILENT";
 const NSIS_SILENT_ARG: &str = "/S";
 const STARTMENU_FOLDER_ENDPOINT: &str = "\\Microsoft\\Windows\\Start Menu\\Programs";
+const PROGRAMS_FOLDER: &str = "Local\\Programs";
 
 pub struct StartmenuFolders {
     pub appdata: PathBuf,
-    pub localappdata: PathBuf,
+    pub programdata: PathBuf,
 }
 
 #[derive(ValueEnum, Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -94,7 +96,7 @@ impl Dist {
         }
     }
 
-    fn create_shorcut_file(
+    fn create_shortcut_file(
         package_name: &str,
         executable_path: &Path,
         appdata_startmenu_folder: &Path,
@@ -134,7 +136,7 @@ impl Dist {
             )?,
         };
         if !matches!(self, Dist::Installer(_)) {
-            Dist::create_shorcut_file(
+            Dist::create_shortcut_file(
                 &self.package_info().name,
                 install_info.executable_path.as_ref().unwrap(),
                 &startmenu_folders.appdata,
@@ -152,11 +154,17 @@ impl Dist {
     }
 
     pub fn generate_dists_folder_path(root_dir: &Path) -> Result<PathBuf, io::Error> {
-        Self::generate_path_from_root("Package-Distributables", root_dir)
+        Self::generate_path_from_root("distributables", root_dir)
     }
 
-    pub fn generate_packages_folder_path(root_dir: &Path) -> Result<PathBuf, io::Error> {
-        Self::generate_path_from_root("Packages", root_dir)
+    pub fn generate_packages_folder_path(
+        root_dir: &Path,
+        appdata_startmenu_folder: &Path,
+    ) -> Result<PathBuf, io::Error> {
+        if DEBUG {
+            return Self::generate_path_from_root("packages", root_dir);
+        }
+        Ok(appdata_startmenu_folder.join(PROGRAMS_FOLDER))
     }
 }
 
@@ -260,27 +268,61 @@ impl ZipDist {
         }
         self.package_info.download(dists_folder_path, client).await
     }
+
     fn find_executable_path(
-        &self,
-        extracted_folder_items: Vec<DirEntry>,
+        self_name_lower: &str,
+        folder: PathBuf,
     ) -> Result<Option<PathBuf>, io::Error> {
-        let self_lower_name = self.package_info.name.to_lowercase();
-        let found_exe = extracted_folder_items.into_iter().find_map(|de| {
-            let lower_file_name = de.path().filename_lower();
-            if lower_file_name.ends_with("exe") && lower_file_name.contains(&self_lower_name) {
-                return Some(de.path());
+        let mut queue = VecDeque::new();
+        let self_exe_name_lower = format!("{}.exe", self_name_lower);
+        queue.push_back(folder);
+        let mut found_exe: Option<PathBuf> = None;
+        // Looks for the executable breadth first
+        while let Some(current_folder) = queue.pop_front() {
+            let folder_items: Vec<PathBuf> = current_folder
+                .folder_items()?
+                .into_iter()
+                .map(|item| item.path())
+                .collect();
+            for item in folder_items.iter() {
+                let lower_file_name = item.filename_lower();
+                if lower_file_name == self_exe_name_lower {
+                    return Ok(Some(item.clone()));
+                }
+                if found_exe.is_none()
+                    && lower_file_name.ends_with("exe")
+                    && lower_file_name.contains(self_name_lower)
+                {
+                    found_exe = Some(item.clone());
+                }
             }
-            None
-        });
+
+            folder_items
+                .into_iter()
+                .filter(|f| f.is_dir())
+                .for_each(|f| queue.push_back(f));
+        }
         Ok(found_exe)
     }
-    fn find_actual_unzip_dir(packages_folder_path: PathBuf) -> Result<PathBuf, io::Error> {
-        let folder_items = packages_folder_path.fetch_folder_items()?;
+
+    fn find_inner_unzip_folder(outer_unzip_folder: PathBuf) -> Result<PathBuf, io::Error> {
+        let inner_folders: Vec<PathBuf> = outer_unzip_folder
+            .folder_items()?
+            .into_iter()
+            .filter_map(|item| {
+                let path = item.path();
+                if path.is_dir() {
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+            .collect();
         // != 1 instead of > 1 so that if the folder is empty we dont get array bounds error at folder_items[0]
-        if folder_items.len() != 1 {
-            return Ok(packages_folder_path);
+        if inner_folders.len() != 1 {
+            return Ok(outer_unzip_folder);
         }
-        ZipDist::find_actual_unzip_dir(folder_items[0].path())
+        ZipDist::find_inner_unzip_folder(inner_folders.take(0).unwrap())
     }
     pub fn install(
         &self,
@@ -289,15 +331,16 @@ impl ZipDist {
     ) -> Result<InstallInfo, ZipIoExeError> {
         let installation_folder = packages_folder_path.join(&self.package_info.name);
         ZipArchive::new(File::open(downloaded_package_path)?)?.extract(&installation_folder)?;
-        let unzip_dir = ZipDist::find_actual_unzip_dir(installation_folder.to_owned())?;
-        if unzip_dir != installation_folder {
-            unzip_dir.move_dir_all(&installation_folder)?;
+        let inner_unzip_dir = ZipDist::find_inner_unzip_folder(installation_folder.to_owned())?;
+        if inner_unzip_dir != installation_folder {
+            inner_unzip_dir.move_dir_all(&installation_folder)?;
         }
         if !DEBUG {
             fs::remove_file(downloaded_package_path)?;
         }
+        let self_name_lower = self.package_info.name.to_lowercase();
         let executable_path =
-            self.find_executable_path(installation_folder.fetch_folder_items()?)?;
+            ZipDist::find_executable_path(&self_name_lower, installation_folder.to_owned())?;
         if executable_path.is_none() {
             fs::remove_dir_all(installation_folder)?;
             return Err(ZipIoExeError::NoExeFouundError(NoExeFoundError));
@@ -324,7 +367,10 @@ impl InstallerDist {
     ) -> Result<PathBuf, RequestIoContentLengthError> {
         let prev_installer = dists_folder_path.join(&self.package_info.file_title);
         if prev_installer.is_file() {
-            println!("Using cached package at: {}", prev_installer.path_str()?);
+            println!(
+                "Using cached distributable at: {}",
+                prev_installer.path_str()?
+            );
             return Ok(prev_installer);
         }
         self.package_info.download(dists_folder_path, client).await
@@ -342,24 +388,23 @@ impl InstallerDist {
         let gen =
             |envvar: &str| PathBuf::from(env::var(envvar).unwrap() + STARTMENU_FOLDER_ENDPOINT);
         let appdata = gen("APPDATA");
-        let localappdata = gen("LOCALAPPDATA");
+        let programdata = gen("PROGRAMDATA");
         StartmenuFolders {
             appdata,
-            localappdata,
+            programdata,
         }
     }
 
     fn fetch_shortcut_files(
         files: &mut HashSet<PathBuf>,
         startmenu_folder: &Path,
-        check_inner_folders: bool,
     ) -> Result<(), io::Error> {
-        for e in startmenu_folder.fetch_folder_items()? {
+        for e in startmenu_folder.folder_items()? {
             let e = e.path();
             if e.is_file() && e.ends_with(".lnk") {
                 files.insert(e);
-            } else if check_inner_folders && e.is_dir() {
-                InstallerDist::fetch_shortcut_files(files, startmenu_folder, false)?;
+            } else if e.is_dir() {
+                InstallerDist::fetch_shortcut_files(files, &e)?;
             }
         }
         Ok(())
@@ -395,7 +440,7 @@ impl InstallerDist {
     }
 
     fn find_shortcut_target(shortcut_path: &Path) -> Option<PathBuf> {
-        let lnk = lnk::ShellLink::open(shortcut_path).ok()?;
+        let lnk = lnk::ShellLink::open(&shortcut_path).ok()?;
         let target = lnk.link_info().as_ref()?.local_base_path().as_ref()?;
         Some(PathBuf::from(target))
     }
@@ -406,7 +451,7 @@ impl InstallerDist {
         startmenu_folder: &Path,
     ) -> Result<Option<PathBuf>, io::Error> {
         let mut shortcut_files_after = HashSet::<PathBuf>::new();
-        InstallerDist::fetch_shortcut_files(&mut shortcut_files_after, startmenu_folder, true)?;
+        InstallerDist::fetch_shortcut_files(&mut shortcut_files_after, startmenu_folder)?;
 
         let found_shortcut = shortcut_files_after
             .difference(shortcut_files_before)
@@ -483,7 +528,7 @@ impl InstallerDist {
     pub fn fetch_uninstall_command_from_executable(
         installation_folder: &Path,
     ) -> Result<Option<String>, io::Error> {
-        for e in installation_folder.fetch_folder_items()?.iter() {
+        for e in installation_folder.folder_items()?.iter() {
             let e_path = e.path();
             let file_name_lower = e_path.filename_lower();
             if file_name_lower.contains("unins") && file_name_lower.ends_with(".exe") {
@@ -507,12 +552,10 @@ impl InstallerDist {
         InstallerDist::fetch_shortcut_files(
             &mut shortcut_files_before,
             &startmenu_folders.appdata,
-            true,
         )?;
         InstallerDist::fetch_shortcut_files(
             &mut shortcut_files_before,
-            &startmenu_folders.localappdata,
-            true,
+            &startmenu_folders.programdata,
         )?;
         let file_extension = installer_path
             .extension()
@@ -524,25 +567,25 @@ impl InstallerDist {
             fs::remove_file(installer_path)?;
         }
 
-        let self_name_lower = self.package_info.name.to_lowercase();
-        let mut executable_path = self
+        let mut shortcut_path = self
             .statically_generate_package_shortcut(&startmenu_folders.appdata)
-            .or_else(|| self.statically_generate_package_shortcut(&startmenu_folders.localappdata));
-        if executable_path.is_none() {
-            executable_path = InstallerDist::dynamically_find_package_shortcut(
+            .or_else(|| self.statically_generate_package_shortcut(&startmenu_folders.programdata));
+        let self_name_lower = self.package_info.name.to_lowercase();
+        if shortcut_path.is_none() {
+            shortcut_path = InstallerDist::dynamically_find_package_shortcut(
                 &self_name_lower,
                 &shortcut_files_before,
                 &startmenu_folders.appdata,
             )?
         };
-        if executable_path.is_none() {
-            executable_path = InstallerDist::dynamically_find_package_shortcut(
+        if shortcut_path.is_none() {
+            shortcut_path = InstallerDist::dynamically_find_package_shortcut(
                 &self_name_lower,
                 &shortcut_files_before,
-                &startmenu_folders.localappdata,
+                &startmenu_folders.programdata,
             )?;
         };
-        executable_path
+        let executable_path = shortcut_path
             .as_ref()
             .and_then(|path| InstallerDist::find_shortcut_target(path));
         let installation_folder = executable_path

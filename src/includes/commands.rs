@@ -30,7 +30,7 @@ use super::{
         VersionAlreadyInstalledError, ExportFileNotFoundError,
     },
     package::ExportedPackage,
-    utils::{EXPORTED_PACKAGES_FILENAME, IBYTES_TO_MBS_DIVISOR},
+    utils::{EXPORTED_PACKAGES_FILENAME, IBYTES_TO_MBS_DIVISOR, DEBUG},
 };
 
 pub struct Statics {
@@ -46,9 +46,9 @@ pub struct Statics {
 impl Statics {
     pub fn new(root_dir: &Path) -> Result<Statics, KnownErrors> {
         let client = setup_client()?;
-        let packages_path = Dist::generate_packages_folder_path(root_dir)?;
         let packages_dists_path = Dist::generate_dists_folder_path(root_dir)?;
         let startmenu_folders = InstallerDist::generate_startmenu_paths();
+        let packages_path = Dist::generate_packages_folder_path(root_dir, &startmenu_folders.appdata)?;
         let user_uninstall_reg_key = InstallerDist::generate_user_uninstall_reg_key()?;
         let machine_uninstall_reg_key = InstallerDist::generate_machine_uninstall_reg_key()?;
         let version_regex = github::api::Repo::generate_version_regex();
@@ -98,7 +98,7 @@ pub fn clear_cached_distributables(dists_folder_path: &Path) -> Result<(), Known
         Ok(prev_size + s)
     };
     let size = dists_folder_path
-        .fetch_folder_items()?
+        .folder_items()?
         .into_iter()
         .try_fold(0, calc_size)?;
     println!("Cleared {}MBs", size / IBYTES_TO_MBS_DIVISOR);
@@ -106,13 +106,13 @@ pub fn clear_cached_distributables(dists_folder_path: &Path) -> Result<(), Known
 }
 pub fn validate_cache_folder_size(root_dir: &Path) -> Result<(), KnownErrors> {
     let size: u64 = Dist::generate_dists_folder_path(root_dir)?
-        .fetch_folder_items()?
+        .folder_items()?
         .iter()
         .filter(|f| f.path().is_file())
         .flat_map(|f| f.metadata().map(|m| m.file_size()))
         .sum();
     let size_mbs = size / IBYTES_TO_MBS_DIVISOR;
-    if size_mbs >= 50 {
+    if size_mbs >= 100 && !DEBUG {
         println!(
             "Distributables cache folder is {}MBs, run \"senget clear-cache\" to clean it up",
             size_mbs

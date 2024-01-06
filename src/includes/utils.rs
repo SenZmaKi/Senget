@@ -1,4 +1,4 @@
-//!Global variables and utility structs, enums and functions
+//!Global variables and utility traits, structs, enums and functions
 
 use reqwest::{header, Client};
 use spinners::{Spinner, Spinners};
@@ -16,6 +16,16 @@ pub const MSI_EXEC: &str = "MsiExec.exe";
 pub const IBYTES_TO_MBS_DIVISOR: u64 = 1024 * 1024;
 // FIXME: set to false on deployment
 pub const DEBUG: bool = true;
+
+pub trait Take<T> {
+    fn take(self, index: usize) -> Option<T>;
+}
+
+impl<T> Take<T> for Vec<T> {
+    fn take(self, index: usize) -> Option<T> {
+        self.into_iter().nth(index)
+    }
+}
 pub trait MoveDirAll {
     fn move_dir_all(&self, to: &Path) -> Result<(), io::Error>;
 }
@@ -27,11 +37,11 @@ impl MoveDirAll for Path {
 }
 
 pub trait FolderItems {
-    fn fetch_folder_items(&self) -> Result<Vec<DirEntry>, io::Error>;
+    fn folder_items(&self) -> Result<Vec<DirEntry>, io::Error>;
 }
 
 impl FolderItems for Path {
-    fn fetch_folder_items(&self) -> Result<Vec<DirEntry>, io::Error> {
+    fn folder_items(&self) -> Result<Vec<DirEntry>, io::Error> {
         self.read_dir()?.try_fold(
             Vec::new(),
             |mut vec, de| -> Result<Vec<DirEntry>, io::Error> {
@@ -73,7 +83,7 @@ impl PathStr for Path {
 }
 
 fn move_dir_all(from: &Path, to: &Path) -> Result<(), io::Error> {
-    let folder_items = from.fetch_folder_items()?;
+    let folder_items = from.folder_items()?;
     if to.is_file() {
         fs::remove_file(to)?;
     }
@@ -108,7 +118,7 @@ pub fn loading_animation<T, E, F>(task_title: String, task: F) -> Result<T, E>
 where
     F: FnOnce() -> Result<T, E>,
 {
-    let mut spinner = Spinner::new(Spinners::Material, task_title);
+    let mut spinner = Spinner::new(Spinners::Dots, task_title);
     match task() {
         Ok(ok) => {
             spinner.stop_and_persist("✔", "Finished".to_owned());
@@ -160,7 +170,7 @@ mod tests {
         let from = test_move_dir.join("from");
         let to = test_move_dir.join("to");
         from.move_dir_all(&to).expect("Folder was moved");
-        assert!(!to.fetch_folder_items().unwrap().is_empty());
+        assert!(!to.folder_items().unwrap().is_empty());
     }
 }
 

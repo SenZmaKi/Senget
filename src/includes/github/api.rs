@@ -4,7 +4,10 @@ use crate::{
     github::serde_json_types::{
         AssetsResponseJson, ReleasesResponseJson, RepoResponseJson, SearchResponseJson,
     },
-    includes::dist::{Dist, DistType, PackageInfo},
+    includes::{
+        dist::{Dist, DistType, PackageInfo},
+        utils::Take,
+    },
 };
 use core::fmt;
 use regex::{self, Regex};
@@ -40,10 +43,12 @@ impl fmt::Display for Repo {
         )
     }
 }
+#[derive(Clone, Debug)]
 struct AssetInfo {
     pub file_title: String,
     pub download_url: String,
     pub dist_type: DistType,
+    pub is_exact_match: bool,
 }
 
 impl Repo {
@@ -99,15 +104,24 @@ impl Repo {
     }
 
     fn parse_asset_info(repo_name_lower: &str, asset: &Asset) -> Option<AssetInfo> {
-        let name_lower = asset.name.to_lowercase();
-        if !name_lower.contains(repo_name_lower) {
+        let full_asset_name_lower = asset.name.to_lowercase();
+        if !full_asset_name_lower.contains(repo_name_lower) {
             return None;
         }
-        let inner_file_extension = name_lower.split('.').last().unwrap_or_default();
-        let is_zip_dist = inner_file_extension == "zip" && name_lower.contains("win");
-        let is_exe = inner_file_extension == "exe";
-        let is_installer_dist = inner_file_extension == "msi"
-            || (is_exe && (name_lower.contains("installer") || name_lower.contains("setup")));
+        let split: Vec<&str> = full_asset_name_lower.split('.').collect();
+        if split.len() < 2 {
+            return None;
+        }
+        let file_extension: &str = split.last().unwrap();
+        let asset_name_lower: String = split[..split.len() - 1].to_owned().into_iter().collect();
+        let is_zip_dist = file_extension == "zip"
+            && !asset_name_lower.contains("mac") // Mac Os
+            && !asset_name_lower.contains("darwin") // Darwin
+            && !asset_name_lower.contains("linux"); // Linux
+        let is_exe = file_extension == "exe";
+        let is_installer_dist = file_extension == "msi"
+            || (is_exe
+                && (asset_name_lower.contains("installer") || asset_name_lower.contains("setup")));
         let is_exe_dist = !is_installer_dist && is_exe;
         if is_exe_dist || is_zip_dist || is_installer_dist {
             let dist_type = if is_exe_dist {
@@ -117,10 +131,16 @@ impl Repo {
             } else {
                 DistType::Installer
             };
+            let is_exact_match = if is_exe_dist && asset_name_lower != repo_name_lower {
+                false
+            } else {
+                true
+            };
             return Some(AssetInfo {
                 file_title: asset.name.clone(),
                 download_url: asset.browser_download_url.clone(),
                 dist_type,
+                is_exact_match,
             });
         }
         None
@@ -128,15 +148,19 @@ impl Repo {
 
     fn find_preferred_dist(
         preferred_dist_type: &Option<DistType>,
-        asset_infos: Vec<AssetInfo>,
+        mut asset_infos: Vec<AssetInfo>,
         repo_name: String,
         version: String,
     ) -> Option<Dist> {
         match preferred_dist_type {
             None => {
                 // The order in which each installer type is compared is: Exe > Zip > Normal
-                let asset_info = asset_infos.into_iter()
-                .max_by_key(|ai| ai.dist_type.clone()).unwrap();
+                // b compared to a so that sorting is in descending order
+                asset_infos.sort_by(|a, b| b.dist_type.partial_cmp(&a.dist_type).unwrap());
+                // is_exact_match > !is_exact_match, !ai cause default sorting is in ascending so
+                // !ai flips sorting to descending order
+                asset_infos.sort_by_key(|ai| !ai.is_exact_match);
+                let asset_info = asset_infos.take(0).unwrap();
                 let dist = PackageInfo::new(
                     repo_name,
                     asset_info.download_url,
@@ -179,12 +203,7 @@ impl Repo {
         if asset_infos.is_empty() {
             return None;
         };
-        Repo::find_preferred_dist(
-            preferred_dist_type,
-            asset_infos,
-            self.name.clone(),
-            version,
-        )
+        Repo::find_preferred_dist(preferred_dist_type, asset_infos, self.name.clone(), version)
     }
 
     pub async fn get_dist(
@@ -308,7 +327,7 @@ pub mod tests {
         };
         assert_eq!(dist.package_info.version, "0.3.5");
     }
-    
+
     #[tokio::test]
     async fn test_getting_exe_distributable() {
         let dist = hatt_repo()
@@ -328,3 +347,4 @@ pub mod tests {
         assert_eq!(dist.package_info.version, "0.3.1");
     }
 }
+

@@ -24,7 +24,7 @@ impl fmt::Debug for ExportFileNotFoundError {
 pub struct NoExeFoundError;
 impl fmt::Debug for NoExeFoundError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "No executable found for the unpacked zip file")
+        write!(f, "No executable found in the unpacked zip file")
     }
 }
 pub struct PrivilegeError;

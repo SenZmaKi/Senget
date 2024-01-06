@@ -4,11 +4,11 @@ senget-package.txt
 
 /target
 /.vscode
-/Packages
-/Package-Database
-/Package-Distributables
-/Test-Database
-/Test-Package-Distributables
+/packages
+/database
+/distributables
+/test-database
+/test-distributables
 /senget-packages.txt
 /src/includes/github/scraps
 /src/includes/crap.rs
