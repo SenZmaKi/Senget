@@ -6,12 +6,16 @@ use includes::{
     cli::{self, match_commands},
     commands::{validate_cache_folder_size, Statics},
     database::PackageDBManager,
+    dist,
     error::{print_error, KnownErrors},
-    github, dist,
+    github,
     senget_manager::{
-        check_if_senget_update_available, generate_senget_package, setup_senget_package,
+        env::setup_senget_packages_path_env_var,
+        package::{
+            check_if_senget_update_available, generate_senget_package, setup_senget_package,
+        },
     },
-    utils::{root_dir, DESCRIPTION, VERSION},
+    utils::{root_dir, PathStr, DESCRIPTION, VERSION},
 };
 
 async fn run() -> Result<(), KnownErrors> {
@@ -23,6 +27,14 @@ async fn run() -> Result<(), KnownErrors> {
     let senget_package =
         generate_senget_package(root_dir.clone(), VERSION.to_owned(), DESCRIPTION.to_owned())?;
     setup_senget_package(&mut db, &senget_package, VERSION)?;
+    setup_senget_packages_path_env_var(
+        &senget_package
+            .install_info
+            .installation_folder
+            .as_ref()
+            .unwrap()
+            .path_str()?,
+    )?;
     let update_available =
         check_if_senget_update_available(&senget_package, &statics.client, &statics.version_regex);
     match_commands(commands, &mut db, &statics).await?;

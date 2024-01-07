@@ -5,12 +5,14 @@ use indicatif::{ProgressBar, ProgressStyle};
 use lnk;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io;
+use std::fs::File;
 use std::collections::VecDeque;
+use std::io::Write;
 use std::{
     collections::HashSet,
     env,
-    fs::{self, File},
-    io::{self, Write},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -27,9 +29,11 @@ use crate::includes::{
 
 use crate::includes::error::{NoExeFoundError, ZipIoExeError};
 
+use super::senget_manager::env::add_package_folder_to_senget_env_var;
+use super::utils::MoveDirAll;
 use super::{
     error::KnownErrors,
-    utils::{FilenameLower, FolderItems, MoveDirAll, PathStr, Take},
+    utils::{FilenameLower, FolderItems, PathStr, Take},
 };
 
 // Running an msi installer that needs admin access silently is problematic since
@@ -87,11 +91,10 @@ impl Dist {
     pub async fn download(
         &self,
         client: &Client,
-        packages_folder_path: &Path,
         dists_folder_path: &Path,
     ) -> Result<PathBuf, RequestIoContentLengthError> {
         match self {
-            Dist::Exe(dist) => dist.download(packages_folder_path, client).await,
+            Dist::Exe(dist) => dist.download(dists_folder_path, client).await,
             Dist::Zip(dist) => dist.download(dists_folder_path, client).await,
             Dist::Installer(dist) => dist.download(dists_folder_path, client).await,
         }
@@ -120,17 +123,17 @@ impl Dist {
 
     pub fn install(
         &self,
-        downloaded_package_path: PathBuf,
+        downloaded_dist_path: &Path,
         packages_folder_path: &Path,
         startmenu_folders: &StartmenuFolders,
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
     ) -> Result<InstallInfo, KnownErrors> {
         let install_info = match self {
-            Dist::Exe(_) => ExeDist::install(downloaded_package_path),
-            Dist::Zip(dist) => dist.install(packages_folder_path, &downloaded_package_path)?,
+            Dist::Exe(dist) => dist.install(&downloaded_dist_path, packages_folder_path)?,
+            Dist::Zip(dist) => dist.install(&downloaded_dist_path, packages_folder_path)?,
             Dist::Installer(dist) => dist.install(
-                &downloaded_package_path,
+                &downloaded_dist_path,
                 startmenu_folders,
                 user_uninstall_reg_key,
                 machine_uninstall_reg_key,
@@ -141,6 +144,11 @@ impl Dist {
                 &self.package_info().name,
                 install_info.executable_path.as_ref().unwrap(),
                 &startmenu_folders.appdata,
+            )?;
+        }
+        if let Some(installation_folder) = install_info.installation_folder.as_ref() {
+            add_package_folder_to_senget_env_var(
+                &installation_folder.path_str().unwrap_or_default(),
             )?;
         }
         Ok(install_info)
@@ -204,18 +212,19 @@ impl PackageInfo {
         let progress_bar = ProgressBar::new(response.content_length().ok_or(ContentLengthError)?);
         progress_bar.set_style(
             ProgressStyle::default_bar()
-                .template("{msg} {wide_bar} {bytes}/{total_bytes} ({eta} left)")
-                .expect("Valid template"),
+                .template("{msg} [{bar:40.green/orange}] {bytes}/{total_bytes} ({eta} left)")
+                .unwrap()
+                .progress_chars("#|-")
         );
         let mut progress = 0;
         progress_bar.set_position(progress);
-        progress_bar.set_message(format!("Downloading {}", self.file_title));
+        progress_bar.set_message(format!("Downloading {}:", self.file_title));
         while let Some(chunk) = response.chunk().await? {
             file.write_all(&chunk)?;
             progress += chunk.len() as u64;
             progress_bar.set_position(progress);
         }
-        progress_bar.finish_with_message("Download complete\n");
+        progress_bar.finish_and_clear();
         Ok(path)
     }
 }
@@ -228,25 +237,28 @@ pub struct ExeDist {
 impl ExeDist {
     pub async fn download(
         &self,
-        packages_folder_path: &Path,
+        distributables_folder_path: &Path,
         client: &reqwest::Client,
     ) -> Result<PathBuf, RequestIoContentLengthError> {
-        let package_folder = packages_folder_path.join(&self.package_info.name);
-        if !package_folder.is_dir() {
-            fs::create_dir(&package_folder)?;
-        }
-        self.package_info.download(&package_folder, client).await
+        self.package_info.download(&distributables_folder_path, client).await
     }
 
-    pub fn install(downloaded_package_path: PathBuf) -> InstallInfo {
-        let installation_folder = Some(downloaded_package_path.parent().unwrap().to_owned());
-        let executable_path = Some(downloaded_package_path);
-        InstallInfo {
+    pub fn install(&self, downloaded_dist_path: &Path, packages_folder_path: &Path) -> Result<InstallInfo, io::Error> {
+        let p_folder_path = packages_folder_path.join(&self.package_info.name);
+        if !p_folder_path.is_dir() {
+            fs::create_dir(&p_folder_path)?;
+        };
+        let exe_path = p_folder_path.join(format!("{}.exe", self.package_info.name));
+        fs::rename(downloaded_dist_path, &exe_path)?;
+        let installation_folder = Some(p_folder_path);
+        let executable_path = Some(exe_path);
+        let install_info = InstallInfo {
             executable_path,
             installation_folder,
             uninstall_command: None,
             dist_type: DistType::Exe,
-        }
+        };
+        Ok(install_info)
     }
 }
 
@@ -327,17 +339,17 @@ impl ZipDist {
     }
     pub fn install(
         &self,
+        downloaded_dist_path: &Path,
         packages_folder_path: &Path,
-        downloaded_package_path: &Path,
     ) -> Result<InstallInfo, ZipIoExeError> {
         let installation_folder = packages_folder_path.join(&self.package_info.name);
-        ZipArchive::new(File::open(downloaded_package_path)?)?.extract(&installation_folder)?;
+        ZipArchive::new(File::open(downloaded_dist_path)?)?.extract(&installation_folder)?;
         let inner_unzip_dir = ZipDist::find_inner_unzip_folder(installation_folder.to_owned())?;
         if inner_unzip_dir != installation_folder {
             inner_unzip_dir.move_dir_all(&installation_folder)?;
         }
         if !DEBUG {
-            fs::remove_file(downloaded_package_path)?;
+            fs::remove_file(downloaded_dist_path)?;
         }
         let self_name_lower = self.package_info.name.to_lowercase();
         let executable_path =
@@ -475,6 +487,7 @@ impl InstallerDist {
                         .get_value("QuietUninstallString")
                         .or_else(|_| subkey.get_value("UninstallString"))
                         .ok();
+                    dbg!(&uninstall_command);
                     return Ok(uninstall_command);
                 }
             }

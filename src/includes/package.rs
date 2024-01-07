@@ -15,8 +15,9 @@ use crate::includes::{
     utils::{PathStr, MSI_EXEC},
 };
 
-use super::dist::{DistType, ExeDist, StartmenuFolders};
+use super::dist::{DistType, StartmenuFolders};
 use super::error::KnownErrors;
+use super::senget_manager::env::remove_package_folder_from_senget_env_var;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportedPackage {
@@ -93,6 +94,11 @@ impl Package {
         }
     }
     pub fn uninstall(&self, startmenu_appdata_folder: &Path) -> Result<bool, io::Error> {
+        if let Some(installation_folder) = self.install_info.installation_folder.as_ref() {
+            remove_package_folder_from_senget_env_var(
+                &installation_folder.path_str().unwrap_or_default(),
+            )?
+        };
         if self.install_info.dist_type == DistType::Installer {
             return self.uninstall_installer_distributable();
         };
@@ -100,7 +106,7 @@ impl Package {
         if installation_folder.is_dir() {
             fs::remove_dir_all(installation_folder)?;
         }
-        let shortcut_file_path = startmenu_appdata_folder.join(format!("{}.lnk", self.repo.name)); 
+        let shortcut_file_path = startmenu_appdata_folder.join(format!("{}.lnk", self.repo.name));
         if shortcut_file_path.is_file() {
             fs::remove_file(shortcut_file_path)?;
         }
@@ -115,8 +121,13 @@ impl Package {
                     if err.to_string().contains(
                         "The filename, directory name, or volume label syntax is incorrect.",
                     ) {
-                        // We assume that if the command didn't work then the user previously uninstalled it themselves
+                        // Assume that if the command didn't work then the user previously uninstalled it themselves
                         return Ok(false);
+                    }
+                }
+                if let Some(executable_path) = self.install_info.executable_path.as_ref() {
+                    if executable_path.is_file() {
+                        return Ok(false)
                     }
                 }
                 Ok(true)
@@ -156,7 +167,7 @@ impl Package {
     pub fn install_updated_version(
         &self,
         dist: Dist,
-        dist_path: &Path,
+        downloaded_dist_path: &Path,
         packages_folder_path: &Path,
         startmenu_folders: &StartmenuFolders,
         user_uninstall_reg_key: &RegKey,
@@ -169,7 +180,7 @@ impl Package {
         let (install_info, version) = match dist {
             Dist::Installer(dist) => (
                 dist.install(
-                    dist_path,
+                    downloaded_dist_path,
                     startmenu_folders,
                     user_uninstall_reg_key,
                     machine_uninstall_reg_key,
@@ -177,11 +188,11 @@ impl Package {
                 dist.package_info.version,
             ),
             Dist::Exe(dist) => (
-                ExeDist::install(dist_path.to_owned()),
+                dist.install(downloaded_dist_path, packages_folder_path)?,
                 dist.package_info.version,
             ),
             Dist::Zip(dist) => (
-                dist.install(packages_folder_path, dist_path)?,
+                dist.install(downloaded_dist_path, packages_folder_path)?,
                 dist.package_info.version,
             ),
         };

@@ -30,7 +30,7 @@ use super::{
         NoValidDistError, PackageAlreadyInstalledError, VersionAlreadyInstalledError,
     },
     package::ExportedPackage,
-    utils::{DEBUG, EXPORTED_PACKAGES_FILENAME, IBYTES_TO_MBS_DIVISOR},
+    utils::{DEBUG, EXPORTED_PACKAGES_FILENAME, IBYTES_TO_MBS_DIVISOR}
 };
 
 pub struct Statics {
@@ -46,9 +46,9 @@ pub struct Statics {
 impl Statics {
     pub fn new(root_dir: &Path) -> Result<Statics, KnownErrors> {
         let client = setup_client()?;
-        let packages_dists_path = Dist::generate_dists_folder_path(root_dir)?;
+        let dists_folder_path = Dist::generate_dists_folder_path(root_dir)?;
         let startmenu_folders = InstallerDist::generate_startmenu_paths();
-        let packages_path =
+        let packages_folder_path =
             Dist::generate_packages_folder_path(root_dir, &startmenu_folders.appdata)?;
         let user_uninstall_reg_key = InstallerDist::generate_user_uninstall_reg_key()?;
         let machine_uninstall_reg_key = InstallerDist::generate_machine_uninstall_reg_key()?;
@@ -56,8 +56,8 @@ impl Statics {
         Ok(Statics {
             client,
             version_regex,
-            packages_folder_path: packages_path,
-            dists_folder_path: packages_dists_path,
+            packages_folder_path,
+            dists_folder_path,
             startmenu_folders,
             user_uninstall_reg_key,
             machine_uninstall_reg_key,
@@ -180,7 +180,6 @@ pub async fn download_package(
     version: &str,
     client: &Client,
     version_regex: &Regex,
-    packages_folder_path: &Path,
     dists_folder_path: &Path,
     preferred_dist_type: &Option<DistType>,
 ) -> Result<(), KnownErrors> {
@@ -190,7 +189,6 @@ pub async fn download_package(
         preferred_dist_type,
         client,
         version_regex,
-        packages_folder_path,
         dists_folder_path,
     )
     .await?;
@@ -203,7 +201,6 @@ async fn internal_download_package(
     preferred_dist_type: &Option<DistType>,
     client: &Client,
     version_regex: &Regex,
-    packages_folder_path: &Path,
     dists_folder_path: &Path,
 ) -> Result<(Repo, Dist, PathBuf), KnownErrors> {
     match find_repo(name, client).await? {
@@ -221,7 +218,7 @@ async fn internal_download_package(
             match dist {
                 Some(dist) => {
                     let dist_path = dist
-                        .download(client, packages_folder_path, dists_folder_path)
+                        .download(client, dists_folder_path)
                         .await?;
                     Ok((repo, dist, dist_path))
                 }
@@ -247,13 +244,12 @@ pub async fn install_package(
                 preferred_dist_type,
                 &statics.client,
                 &statics.version_regex,
-                &statics.packages_folder_path,
                 &statics.dists_folder_path,
             )
             .await?;
             let task = || {
                 dist.install(
-                    downloaded_package_path,
+                    &downloaded_package_path,
                     &statics.packages_folder_path,
                     &statics.startmenu_folders,
                     &statics.user_uninstall_reg_key,
@@ -333,7 +329,6 @@ async fn update_package(
                         let dist_path = dist
                             .download(
                                 &statics.client,
-                                &statics.packages_folder_path,
                                 &statics.dists_folder_path,
                             )
                             .await?;
@@ -369,7 +364,7 @@ pub fn list_packages(db: &PackageDBManager) {
         .map(|p| {
             let path = p
                 .install_info
-                .executable_path
+                .installation_folder
                 .as_ref()
                 .map(|p| p.path_str().unwrap_or_default())
                 .unwrap_or_default();

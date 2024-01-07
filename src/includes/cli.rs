@@ -191,7 +191,6 @@ pub async fn match_commands(
                 &statics.client,
                 &statics.version_regex,
                 &get_path(arg_match),
-                &statics.dists_folder_path,
                 &None,
             )
             .await
