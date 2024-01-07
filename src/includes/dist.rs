@@ -32,7 +32,7 @@ use crate::includes::error::{NoExeFoundError, ZipIoExeError};
 use super::senget_manager::env::add_package_folder_to_senget_env_var;
 use super::utils::MoveDirAll;
 use super::{
-    error::KnownErrors,
+    error::SengetErrors,
     utils::{FilenameLower, FolderItems, PathStr, Take},
 };
 
@@ -129,20 +129,20 @@ impl Dist {
         startmenu_folders: &StartmenuFolders,
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
-    ) -> Result<InstallInfo, KnownErrors> {
+    ) -> Result<InstallInfo, SengetErrors> {
         let install_info = match self {
             Dist::Exe(dist) => dist.install(
-                &downloaded_dist_path,
+                downloaded_dist_path,
                 packages_folder_path,
                 create_shortcut_file,
             )?,
             Dist::Zip(dist) => dist.install(
-                &downloaded_dist_path,
+                downloaded_dist_path,
                 packages_folder_path,
                 create_shortcut_file,
             )?,
             Dist::Installer(dist) => dist.install(
-                &downloaded_dist_path,
+                downloaded_dist_path,
                 create_shortcut_file,
                 startmenu_folders,
                 user_uninstall_reg_key,
@@ -251,7 +251,7 @@ impl ExeDist {
         client: &reqwest::Client,
     ) -> Result<PathBuf, RequestIoContentLengthError> {
         self.package_info
-            .download(&distributables_folder_path, client)
+            .download(distributables_folder_path, client)
             .await
     }
 
@@ -477,7 +477,7 @@ impl InstallerDist {
     }
 
     fn find_shortcut_target(shortcut_path: &Path) -> Option<PathBuf> {
-        let lnk = lnk::ShellLink::open(&shortcut_path).ok()?;
+        let lnk = lnk::ShellLink::open(shortcut_path).ok()?;
         let target = lnk.link_info().as_ref()?.local_base_path().as_ref()?;
         Some(PathBuf::from(target))
     }

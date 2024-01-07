@@ -104,13 +104,11 @@ impl Repo {
     }
 
     fn purify_exe_name(name: &str) -> String {
-        name.replace("-", "")
-            .replace("_", "")
-            .replace(".", "")
+        name.replace(['-', '_', '.', ], "")
             .replace("exe", "")
             .replace("windows", "")
             .replace("win", "")
-            .replace("x", "")
+            .replace('x', "")
             .replace("bit", "")
             .replace("amd64", "")
             .replace("arm", "")
@@ -146,12 +144,9 @@ impl Repo {
             } else {
                 DistType::Installer
             };
-            let is_exact_match =
-                if is_exe_dist && Repo::purify_exe_name(&asset_name_lower) != Repo::purify_exe_name(repo_name_lower) {
-                    false
-                } else {
-                    true
-                };
+            let is_exact_match = !(is_exe_dist
+                && Repo::purify_exe_name(&asset_name_lower)
+                    != Repo::purify_exe_name(repo_name_lower));
             return Some(AssetInfo {
                 file_title: asset.name.clone(),
                 download_url: asset.browser_download_url.clone(),

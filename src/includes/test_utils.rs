@@ -7,7 +7,7 @@ pub use tests::*;
 pub mod tests {
     use crate::includes::github::api::Repo;
     use crate::includes::dist::{InstallerDist, PackageInfo, DistType};
-    use crate::includes::{database::PackageDBManager, utils};
+    use crate::includes::{database::PackageDatabase, utils};
     use crate::includes::{dist::InstallInfo, package::Package};
     use std::{fs, path::PathBuf};
 
@@ -69,17 +69,17 @@ pub mod tests {
         Package::new("0.3.1".to_owned(), hatt_repo(), install_info)
     }
 
-    fn setup_test_db_save_path() -> PathBuf {
+    fn setup_test_db_save_folder() -> PathBuf {
         let db_folder = PathBuf::from("test-database");
         if !db_folder.is_dir() {
             fs::create_dir(&db_folder).unwrap();
         }
         // Delete previous DB file cause each test assumes it's a clean start
-        let f = db_folder.join("test.tinydb");
+        let f = db_folder.join("packages.json");
         if f.is_file() {
             fs::remove_file(&f).unwrap();
         }
-        f
+        db_folder
     }
 
     pub fn senpwai_latest_dist() -> InstallerDist {
@@ -93,8 +93,8 @@ pub mod tests {
         InstallerDist { package_info }
     }
 
-    pub fn db_manager() -> PackageDBManager {
-        PackageDBManager::new(&setup_test_db_save_path()).unwrap()
+    pub fn db_manager() -> PackageDatabase {
+        PackageDatabase::new(&setup_test_db_save_folder()).unwrap()
     }
 
     pub fn client() -> reqwest::Client {

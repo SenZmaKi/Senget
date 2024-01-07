@@ -4,7 +4,6 @@ use mslnk::MSLinkError;
 use reqwest;
 use std::fmt;
 use std::io;
-use tinydb;
 
 pub struct ContentLengthError;
 
@@ -98,10 +97,9 @@ impl fmt::Debug for NoExecutableError {
     }
 }
 
-pub enum KnownErrors {
+pub enum SengetErrors {
     RequestError(reqwest::Error),
     IoError(io::Error),
-    DatabaseError(tinydb::error::DatabaseError),
     PrivilegeError(PrivilegeError),
     RequestIoError(RequestIoError),
     RequestIoContentLengthError(RequestIoContentLengthError),
@@ -121,29 +119,28 @@ pub enum KnownErrors {
     MSLinkError(MSLinkError)
 }
 
-impl fmt::Debug for KnownErrors {
+impl fmt::Debug for SengetErrors {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            KnownErrors::NoExecutableError(err) => write!(f, "{:?}", err),
-            KnownErrors::RequestError(err) => write!(f, "{:?}", err),
-            KnownErrors::IoError(err) => write!(f, "{:?}", err),
-            KnownErrors::DatabaseError(err) => write!(f, "{:?}", err),
-            KnownErrors::PrivilegeError(err) => write!(f, "{:?}", err),
-            KnownErrors::RequestIoError(err) => write!(f, "{:?}", err),
-            KnownErrors::RequestIoContentLengthError(err) => write!(f, "{:?}", err),
-            KnownErrors::VersionAlreadyInstalledError(err) => write!(f, "{:?}", err),
-            KnownErrors::AlreadyUptoDateError(err) => write!(f, "{:?}", err),
-            KnownErrors::FailedToUninstallError(err) => write!(f, "{:?}", err),
-            KnownErrors::NoInstalledPackageError(err) => write!(f, "{:?}", err),
-            KnownErrors::NoPackageError(err) => write!(f, "{:?}", err),
-            KnownErrors::NoValidDistError(err) => write!(f, "{:?}", err),
-            KnownErrors::PackageAlreadyInstalledError(err) => write!(f, "{:?}", err),
-            KnownErrors::ContentLengthError(err) => write!(f, "{:?}", err),
-            KnownErrors::NetworkError(err) => write!(f, "{:?}", err),
-            KnownErrors::ZipIoExeError(err) => write!(f, "{:?}", err),
-            KnownErrors::SerdeError(err) => write!(f, "{:?}", err),
-            KnownErrors::ExportFileNotFoundError(err) => write!(f, "{:?}", err),
-            KnownErrors::MSLinkError(err) => write!(f, "{:?}", err),
+            SengetErrors::NoExecutableError(err) => write!(f, "{:?}", err),
+            SengetErrors::RequestError(err) => write!(f, "{:?}", err),
+            SengetErrors::IoError(err) => write!(f, "{:?}", err),
+            SengetErrors::PrivilegeError(err) => write!(f, "{:?}", err),
+            SengetErrors::RequestIoError(err) => write!(f, "{:?}", err),
+            SengetErrors::RequestIoContentLengthError(err) => write!(f, "{:?}", err),
+            SengetErrors::VersionAlreadyInstalledError(err) => write!(f, "{:?}", err),
+            SengetErrors::AlreadyUptoDateError(err) => write!(f, "{:?}", err),
+            SengetErrors::FailedToUninstallError(err) => write!(f, "{:?}", err),
+            SengetErrors::NoInstalledPackageError(err) => write!(f, "{:?}", err),
+            SengetErrors::NoPackageError(err) => write!(f, "{:?}", err),
+            SengetErrors::NoValidDistError(err) => write!(f, "{:?}", err),
+            SengetErrors::PackageAlreadyInstalledError(err) => write!(f, "{:?}", err),
+            SengetErrors::ContentLengthError(err) => write!(f, "{:?}", err),
+            SengetErrors::NetworkError(err) => write!(f, "{:?}", err),
+            SengetErrors::ZipIoExeError(err) => write!(f, "{:?}", err),
+            SengetErrors::SerdeError(err) => write!(f, "{:?}", err),
+            SengetErrors::ExportFileNotFoundError(err) => write!(f, "{:?}", err),
+            SengetErrors::MSLinkError(err) => write!(f, "{:?}", err),
         }
     }
 }
@@ -234,121 +231,117 @@ impl From<reqwest::Error> for RequestIoContentLengthError {
     }
 }
 
-impl From<ZipIoExeError> for KnownErrors {
+impl From<ZipIoExeError> for SengetErrors {
     fn from(error: ZipIoExeError) -> Self {
-        KnownErrors::ZipIoExeError(error)
+        SengetErrors::ZipIoExeError(error)
     }
 }
 
-impl From<reqwest::Error> for KnownErrors {
+impl From<reqwest::Error> for SengetErrors {
     fn from(error: reqwest::Error) -> Self {
-        KnownErrors::RequestError(error)
+        SengetErrors::RequestError(error)
     }
 }
 
-impl From<PrivilegeError> for KnownErrors {
+impl From<PrivilegeError> for SengetErrors {
     fn from(error: PrivilegeError) -> Self {
-        KnownErrors::PrivilegeError(error)
+        SengetErrors::PrivilegeError(error)
     }
 }
-impl From<io::Error> for KnownErrors {
+impl From<io::Error> for SengetErrors {
     fn from(error: io::Error) -> Self {
-        KnownErrors::IoError(error)
+        SengetErrors::IoError(error)
     }
 }
-impl From<tinydb::error::DatabaseError> for KnownErrors {
-    fn from(error: tinydb::error::DatabaseError) -> Self {
-        KnownErrors::DatabaseError(error)
-    }
-}
-impl From<ExportFileNotFoundError> for KnownErrors {
+
+impl From<ExportFileNotFoundError> for SengetErrors {
     fn from(err: ExportFileNotFoundError) -> Self {
-        KnownErrors::ExportFileNotFoundError(err)
+        SengetErrors::ExportFileNotFoundError(err)
     }
 }
 
-impl From<RequestIoError> for KnownErrors {
+impl From<RequestIoError> for SengetErrors {
     fn from(error: RequestIoError) -> Self {
-        KnownErrors::RequestIoError(error)
+        SengetErrors::RequestIoError(error)
     }
 }
 
-impl From<serde_json::error::Error> for KnownErrors {
+impl From<serde_json::error::Error> for SengetErrors {
     fn from(error: serde_json::error::Error) -> Self {
-        KnownErrors::SerdeError(error)
+        SengetErrors::SerdeError(error)
     }
 }
 
-impl From<RequestIoContentLengthError> for KnownErrors {
+impl From<RequestIoContentLengthError> for SengetErrors {
     fn from(error: RequestIoContentLengthError) -> Self {
-        KnownErrors::RequestIoContentLengthError(error)
+        SengetErrors::RequestIoContentLengthError(error)
     }
 }
 
-impl From<NoExecutableError> for KnownErrors {
+impl From<NoExecutableError> for SengetErrors {
     fn from(error: NoExecutableError) -> Self {
-        KnownErrors::NoExecutableError(error)
+        SengetErrors::NoExecutableError(error)
     }
 }
 
-impl From<NoInstalledPackageError> for KnownErrors {
+impl From<NoInstalledPackageError> for SengetErrors {
     fn from(error: NoInstalledPackageError) -> Self {
-        KnownErrors::NoInstalledPackageError(error)
+        SengetErrors::NoInstalledPackageError(error)
     }
 }
-impl From<VersionAlreadyInstalledError> for KnownErrors {
+impl From<VersionAlreadyInstalledError> for SengetErrors {
     fn from(error: VersionAlreadyInstalledError) -> Self {
-        KnownErrors::VersionAlreadyInstalledError(error)
+        SengetErrors::VersionAlreadyInstalledError(error)
     }
 }
 
-impl From<AlreadyUptoDateError> for KnownErrors {
+impl From<AlreadyUptoDateError> for SengetErrors {
     fn from(error: AlreadyUptoDateError) -> Self {
-        KnownErrors::AlreadyUptoDateError(error)
+        SengetErrors::AlreadyUptoDateError(error)
     }
 }
-impl From<FailedToUninstallError> for KnownErrors {
+impl From<FailedToUninstallError> for SengetErrors {
     fn from(error: FailedToUninstallError) -> Self {
-        KnownErrors::FailedToUninstallError(error)
+        SengetErrors::FailedToUninstallError(error)
     }
 }
 
-impl From<NoPackageError> for KnownErrors {
+impl From<NoPackageError> for SengetErrors {
     fn from(error: NoPackageError) -> Self {
-        KnownErrors::NoPackageError(error)
+        SengetErrors::NoPackageError(error)
     }
 }
 
-impl From<NoValidDistError> for KnownErrors {
+impl From<NoValidDistError> for SengetErrors {
     fn from(error: NoValidDistError) -> Self {
-        KnownErrors::NoValidDistError(error)
+        SengetErrors::NoValidDistError(error)
     }
 }
 
-impl From<PackageAlreadyInstalledError> for KnownErrors {
+impl From<PackageAlreadyInstalledError> for SengetErrors {
     fn from(error: PackageAlreadyInstalledError) -> Self {
-        KnownErrors::PackageAlreadyInstalledError(error)
+        SengetErrors::PackageAlreadyInstalledError(error)
     }
 }
 
-impl From<ContentLengthError> for KnownErrors {
+impl From<ContentLengthError> for SengetErrors {
     fn from(error: ContentLengthError) -> Self {
-        KnownErrors::ContentLengthError(error)
+        SengetErrors::ContentLengthError(error)
     }
 }
 
-impl From<NetworkError> for KnownErrors {
+impl From<NetworkError> for SengetErrors {
     fn from(error: NetworkError) -> Self {
-        KnownErrors::NetworkError(error)
+        SengetErrors::NetworkError(error)
     }
 }
-impl From<MSLinkError> for KnownErrors {
+impl From<MSLinkError> for SengetErrors {
     fn from(error: MSLinkError) -> Self {
-        KnownErrors::MSLinkError(error)
+        SengetErrors::MSLinkError(error)
     }
 }
 
-pub fn check_for_other_errors(err: KnownErrors) -> KnownErrors {
+pub fn check_for_other_errors(err: SengetErrors) -> SengetErrors {
     let str_error = format!("{:?}", err);
     if str_error.contains("The requested operation requires elevation.") {
         return PrivilegeError.into(); // Happens when they disconnect for a decent while during an ongoing download
@@ -358,7 +351,7 @@ pub fn check_for_other_errors(err: KnownErrors) -> KnownErrors {
     err
 }
 
-pub fn print_error(err: KnownErrors) {
+pub fn print_error(err: SengetErrors) {
     let err = check_for_other_errors(err);
     eprintln!("\n{:?}", err);
 }

@@ -4,14 +4,14 @@ use crate::includes::commands::{
     download_package, export_packages, import_packages, install_package, list_packages,
     run_package, search_repos, show_package, uninstall_package,
 };
-use crate::includes::error::KnownErrors;
+use crate::includes::error::SengetErrors;
 use crate::includes::utils::{DESCRIPTION, VERSION};
 use clap::builder::EnumValueParser;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use std::path::PathBuf;
 
 use super::commands::{clear_cached_distributables, purge_packages, update_handler, Statics};
-use super::database::PackageDBManager;
+use super::database::PackageDatabase;
 use super::dist::DistType;
 use super::utils::EXPORTED_PACKAGES_FILENAME;
 
@@ -165,12 +165,12 @@ fn get_string_vector<'a>(id: &str, arg_match: &'a ArgMatches) -> Vec<&'a String>
 }
 pub async fn match_commands(
     commands: Command,
-    db: &mut PackageDBManager,
+    db: &PackageDatabase,
     statics: &Statics,
-) -> Result<(), KnownErrors> {
+) -> Result<(), SengetErrors> {
     match commands.get_matches().subcommand() {
         Some(("list", _)) => {
-            list_packages(db);
+            list_packages(db)?;
             Ok(())
         }
         Some(("purge", _)) => purge_packages(db),

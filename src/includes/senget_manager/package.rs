@@ -5,9 +5,9 @@ use regex::Regex;
 use reqwest::Client;
 
 use crate::includes::{
-    database::PackageDBManager,
+    database::PackageDatabase,
     dist::{DistType, InstallInfo, InstallerDist},
-    error::KnownErrors,
+    error::SengetErrors,
     github::api::Repo,
     package::Package,
 };
@@ -39,14 +39,14 @@ pub fn generate_senget_package(
 }
 
 pub fn setup_senget_package(
-    db: &mut PackageDBManager,
+    db: &PackageDatabase,
     senget_package: &Package, /*
                                 The chance of the package being outdated or for the current execution to be the first run are way
                                 lower than for this to be a normal run so instead of needlessly copying senget_package every time
                               this function is called we use reference such that we'll only copy it internally incase the aforementioned conditions are met
                               */
     version: &str,
-) -> Result<(), KnownErrors> {
+) -> Result<(), SengetErrors> {
     match db.find_package("Senget")? {
         Some(old_senget_package) => {
             if old_senget_package.version != version {

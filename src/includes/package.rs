@@ -16,12 +16,12 @@ use crate::includes::{
 };
 
 use super::dist::{DistType, StartmenuFolders};
-use super::error::KnownErrors;
+use super::error::SengetErrors;
 use super::senget_manager::env::remove_package_folder_from_senget_env_var;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportedPackage {
-    pub lowercase_fullname: String,
+    pub full_name: String,
     pub version: String,
     pub preferred_dist_type: DistType,
     pub create_shorcut_file: bool,
@@ -30,8 +30,6 @@ pub struct ExportedPackage {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Package {
     pub version: String,
-    pub lowercase_name: String, // Used when querying the database
-    pub lowercase_fullname: String,
     pub repo: Repo,
     pub install_info: InstallInfo,
 }
@@ -51,15 +49,13 @@ impl Package {
     pub fn new(version: String, repo: Repo, install_info: InstallInfo) -> Package {
         Package {
             version,
-            lowercase_name: repo.name.to_lowercase(),
-            lowercase_fullname: repo.full_name.to_lowercase(),
             repo,
             install_info,
         }
     }
     pub fn export(&self) -> ExportedPackage {
         ExportedPackage {
-            lowercase_fullname: self.lowercase_fullname.clone(),
+            full_name: self.repo.full_name.clone(),
             version: self.version.clone(),
             preferred_dist_type: self.install_info.dist_type.clone(),
             create_shorcut_file: self.install_info.create_shortcut_file
@@ -174,7 +170,7 @@ impl Package {
         startmenu_folders: &StartmenuFolders,
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
-    ) -> Result<Package, KnownErrors> {
+    ) -> Result<Package, SengetErrors> {
         /* Generation of InstallInfo is pretty wonky, for the execuable_path it checks for
         new shortcut files after installation and for uninstall_command it checks for new registry entries.
         For these reasons there won't probably be any new shortcut files/registry entries if it's an update cause

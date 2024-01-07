@@ -11,7 +11,7 @@ use std::{
 
 pub const EXPORTED_PACKAGES_FILENAME: &str = "senget-packages.json";
 pub const VERSION: &str = "0.1.0";
-pub const DESCRIPTION: &str = "Github package manager for windows";
+pub const DESCRIPTION: &str = "Fastest windows package manager";
 pub const MSI_EXEC: &str = "MsiExec.exe";
 pub const IBYTES_TO_MBS_DIVISOR: u64 = 1024 * 1024;
 // FIXME: set to false on deployment

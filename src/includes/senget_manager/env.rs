@@ -2,10 +2,7 @@
 
 use std::io;
 
-use winreg::{
-    enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS},
-    RegKey,
-};
+use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 const SENGET_PACKAGES_ENV_VAR: &str = "SENGET_PACKAGES";
 
 pub fn setup_senget_packages_path_env_var(
@@ -23,7 +20,7 @@ pub fn setup_senget_packages_path_env_var(
     }
     if let Err(err) = env_var.get_value::<String, _>(SENGET_PACKAGES_ENV_VAR) {
         if err.kind() == io::ErrorKind::NotFound {
-            return set_senget_env_var_value(&env_var, senget_installation_folder);
+            set_senget_env_var_value(&env_var, senget_installation_folder)?;
         }
         return Err(err);
     }
@@ -58,6 +55,9 @@ fn add_senget_env_var_value(env_var: &RegKey, new_value: &str) -> Result<(), io:
 }
 
 fn open_env_var() -> Result<RegKey, io::Error> {
-    RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags("Environment", KEY_ALL_ACCESS)
+    // create_subkey instead of open with KEY_ALL_ACCESS incase some weirdo doesn't have Environment
+    // path variable, will probably never happen but my anxiety
+    let (env, _) = RegKey::predef(HKEY_CURRENT_USER).create_subkey("Environment")?;
+    Ok(env)
 }
 
