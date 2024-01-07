@@ -33,6 +33,7 @@ pub fn generate_senget_package(
         installation_folder,
         uninstall_command,
         dist_type: DistType::Installer,
+        create_shortcut_file: false,
     };
     Ok(Package::new(version, repo, install_info))
 }

@@ -232,6 +232,7 @@ pub async fn install_package(
     name: &str,
     version: &str,
     preferred_dist_type: &Option<DistType>,
+    create_shortcut_file: bool,
     db: &mut PackageDBManager,
     statics: &Statics,
 ) -> Result<(), KnownErrors> {
@@ -251,6 +252,7 @@ pub async fn install_package(
                 dist.install(
                     &downloaded_package_path,
                     &statics.packages_folder_path,
+                    create_shortcut_file,
                     &statics.startmenu_folders,
                     &statics.user_uninstall_reg_key,
                     &statics.machine_uninstall_reg_key,
@@ -480,6 +482,7 @@ pub async fn import_packages(
             &p.lowercase_fullname,
             version,
             &Some(p.preferred_dist_type),
+            p.create_shorcut_file,
             db,
             statics,
         )

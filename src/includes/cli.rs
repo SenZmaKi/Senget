@@ -78,7 +78,13 @@ pub fn parse_commands() -> Command {
         .about("Install a package")
         .arg(&name_arg)
         .arg(&version_arg)
-        .arg(&dist_type_arg);
+        .arg(&dist_type_arg)
+        .arg(flag_arg(
+            "Don't create a startmenu shortcut file after installing, only takes effect in exe and zip distributables",
+            "no-shortcut",
+            'n',
+        ));
+
     let download_command = Command::new("download")
         .about("Download the distributable for a package")
         .arg(&name_arg)
@@ -201,6 +207,7 @@ pub async fn match_commands(
                 get_name(arg_match),
                 get_version(arg_match),
                 &get_dist_type(arg_match).cloned(),
+                !get_flag("no-shortcut", arg_match),
                 db,
                 statics,
             )

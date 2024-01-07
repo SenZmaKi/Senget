@@ -24,6 +24,7 @@ pub struct ExportedPackage {
     pub lowercase_fullname: String,
     pub version: String,
     pub preferred_dist_type: DistType,
+    pub create_shorcut_file: bool,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +62,7 @@ impl Package {
             lowercase_fullname: self.lowercase_fullname.clone(),
             version: self.version.clone(),
             preferred_dist_type: self.install_info.dist_type.clone(),
+            create_shorcut_file: self.install_info.create_shortcut_file
         }
     }
     pub fn installation_folder_str(&self) -> String {
@@ -181,6 +183,7 @@ impl Package {
             Dist::Installer(dist) => (
                 dist.install(
                     downloaded_dist_path,
+                    self.install_info.create_shortcut_file,
                     startmenu_folders,
                     user_uninstall_reg_key,
                     machine_uninstall_reg_key,
@@ -188,11 +191,11 @@ impl Package {
                 dist.package_info.version,
             ),
             Dist::Exe(dist) => (
-                dist.install(downloaded_dist_path, packages_folder_path)?,
+                dist.install(downloaded_dist_path, packages_folder_path, self.install_info.create_shortcut_file)?,
                 dist.package_info.version,
             ),
             Dist::Zip(dist) => (
-                dist.install(downloaded_dist_path, packages_folder_path)?,
+                dist.install(downloaded_dist_path,  packages_folder_path, self.install_info.create_shortcut_file)?,
                 dist.package_info.version,
             ),
         };
@@ -214,6 +217,7 @@ impl Package {
                 installation_folder,
                 uninstall_command,
                 dist_type: preferred_dist_type,
+                create_shortcut_file: self.install_info.create_shortcut_file,
             },
         ))
     }

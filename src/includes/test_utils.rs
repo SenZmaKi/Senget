@@ -53,7 +53,8 @@ pub mod tests {
             uninstall_command: Some(
                 "C:\\Users\\PC\\AppData\\Local\\Programs\\Senpwai\\unins000.exe /SILENT".to_owned(),
             ),
-            dist_type: DistType::Installer
+            dist_type: DistType::Installer,
+            create_shortcut_file: false,
         };
         Package::new(version, senpwai_repo(), install_info)
     }
@@ -62,7 +63,8 @@ pub mod tests {
             executable_path: Some(PathBuf::from("C:\\Users\\PC\\OneDrive\\Documents\\Rust\\Senget\\Packages\\Hatt\\hatt.exe")),
             installation_folder: Some(PathBuf::from("C:\\Users\\PC\\OneDrive\\Documents\\Rust\\Senget\\Packages\\Hatt")),
             uninstall_command: None,
-            dist_type: DistType::Exe
+            dist_type: DistType::Exe,
+            create_shortcut_file: false,
         };
         Package::new("0.3.1".to_owned(), hatt_repo(), install_info)
     }

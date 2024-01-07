@@ -5,10 +5,10 @@ use indicatif::{ProgressBar, ProgressStyle};
 use lnk;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::io;
-use std::fs::File;
 use std::collections::VecDeque;
+use std::fs;
+use std::fs::File;
+use std::io;
 use std::io::Write;
 use std::{
     collections::HashSet,
@@ -125,21 +125,31 @@ impl Dist {
         &self,
         downloaded_dist_path: &Path,
         packages_folder_path: &Path,
+        create_shortcut_file: bool,
         startmenu_folders: &StartmenuFolders,
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
     ) -> Result<InstallInfo, KnownErrors> {
         let install_info = match self {
-            Dist::Exe(dist) => dist.install(&downloaded_dist_path, packages_folder_path)?,
-            Dist::Zip(dist) => dist.install(&downloaded_dist_path, packages_folder_path)?,
+            Dist::Exe(dist) => dist.install(
+                &downloaded_dist_path,
+                packages_folder_path,
+                create_shortcut_file,
+            )?,
+            Dist::Zip(dist) => dist.install(
+                &downloaded_dist_path,
+                packages_folder_path,
+                create_shortcut_file,
+            )?,
             Dist::Installer(dist) => dist.install(
                 &downloaded_dist_path,
+                create_shortcut_file,
                 startmenu_folders,
                 user_uninstall_reg_key,
                 machine_uninstall_reg_key,
             )?,
         };
-        if !matches!(self, Dist::Installer(_)) {
+        if !matches!(self, Dist::Installer(_)) && create_shortcut_file {
             Dist::create_shortcut_file(
                 &self.package_info().name,
                 install_info.executable_path.as_ref().unwrap(),
@@ -214,7 +224,7 @@ impl PackageInfo {
             ProgressStyle::default_bar()
                 .template("{msg} [{bar:40.green/orange}] {bytes}/{total_bytes} ({eta} left)")
                 .unwrap()
-                .progress_chars("#|-")
+                .progress_chars("#|-"),
         );
         let mut progress = 0;
         progress_bar.set_position(progress);
@@ -240,16 +250,27 @@ impl ExeDist {
         distributables_folder_path: &Path,
         client: &reqwest::Client,
     ) -> Result<PathBuf, RequestIoContentLengthError> {
-        self.package_info.download(&distributables_folder_path, client).await
+        self.package_info
+            .download(&distributables_folder_path, client)
+            .await
     }
 
-    pub fn install(&self, downloaded_dist_path: &Path, packages_folder_path: &Path) -> Result<InstallInfo, io::Error> {
+    pub fn install(
+        &self,
+        downloaded_dist_path: &Path,
+        packages_folder_path: &Path,
+        create_shortcut_file: bool,
+    ) -> Result<InstallInfo, io::Error> {
         let p_folder_path = packages_folder_path.join(&self.package_info.name);
         if !p_folder_path.is_dir() {
             fs::create_dir(&p_folder_path)?;
         };
         let exe_path = p_folder_path.join(format!("{}.exe", self.package_info.name));
-        fs::rename(downloaded_dist_path, &exe_path)?;
+        if DEBUG {
+            fs::copy(downloaded_dist_path, &exe_path)?;
+        } else {
+            fs::rename(downloaded_dist_path, &exe_path)?;
+        }
         let installation_folder = Some(p_folder_path);
         let executable_path = Some(exe_path);
         let install_info = InstallInfo {
@@ -257,6 +278,7 @@ impl ExeDist {
             installation_folder,
             uninstall_command: None,
             dist_type: DistType::Exe,
+            create_shortcut_file,
         };
         Ok(install_info)
     }
@@ -341,6 +363,7 @@ impl ZipDist {
         &self,
         downloaded_dist_path: &Path,
         packages_folder_path: &Path,
+        create_shortcut_file: bool,
     ) -> Result<InstallInfo, ZipIoExeError> {
         let installation_folder = packages_folder_path.join(&self.package_info.name);
         ZipArchive::new(File::open(downloaded_dist_path)?)?.extract(&installation_folder)?;
@@ -363,6 +386,7 @@ impl ZipDist {
             installation_folder: Some(installation_folder),
             uninstall_command: None,
             dist_type: DistType::Zip,
+            create_shortcut_file,
         })
     }
 }
@@ -556,6 +580,7 @@ impl InstallerDist {
     pub fn install(
         &self,
         installer_path: &Path,
+        create_shortcut_file: bool,
         startmenu_folders: &StartmenuFolders,
         user_uninstall_reg_key: &RegKey,
         machine_uninstall_reg_key: &RegKey,
@@ -620,6 +645,7 @@ impl InstallerDist {
             installation_folder,
             uninstall_command,
             dist_type: DistType::Installer,
+            create_shortcut_file,
         })
     }
 }
@@ -630,6 +656,7 @@ pub struct InstallInfo {
     pub installation_folder: Option<PathBuf>,
     pub uninstall_command: Option<String>,
     pub dist_type: DistType,
+    pub create_shortcut_file: bool,
 }
 
 #[cfg(test)]
@@ -655,6 +682,7 @@ mod tests {
         let install_info = senpwai_latest_dist()
             .install(
                 &path,
+                false,
                 &InstallerDist::generate_startmenu_paths(),
                 &InstallerDist::generate_user_uninstall_reg_key()
                     .expect("Ok(user_uninstall_reg_key)"),
