@@ -103,26 +103,39 @@ impl Repo {
         }
     }
 
+    fn purify_exe_name(name: &str) -> String {
+        name.replace("-", "")
+            .replace("_", "")
+            .replace(".", "")
+            .replace("exe", "")
+            .replace("windows", "")
+            .replace("win", "")
+            .replace("x", "")
+            .replace("amd64", "")
+            .replace("arm", "")
+            .replace("i386", "")
+            .replace("86", "")
+            .replace("64", "")
+            .replace("32", "")
+    }
+
     fn parse_asset_info(repo_name_lower: &str, asset: &Asset) -> Option<AssetInfo> {
-        let full_asset_name_lower = asset.name.to_lowercase();
-        if !full_asset_name_lower.contains(repo_name_lower) {
+        let asset_name_lower = asset.name.to_lowercase();
+        if !asset_name_lower.contains(repo_name_lower) {
             return None;
         }
-        let split: Vec<&str> = full_asset_name_lower.split('.').collect();
-        if split.len() < 2 {
-            return None;
-        }
-        let file_extension: &str = split.last().unwrap();
-        let asset_name_lower: String = split[..split.len() - 1].to_owned().into_iter().collect();
-        let is_zip_dist = file_extension == "zip"
+        let is_exe = asset_name_lower.ends_with(".exe");
+        let is_installer_dist = asset_name_lower.ends_with(".msi")
+            || (is_exe
+                && (asset_name_lower.contains("installer")
+                    || asset_name_lower.contains("setup")
+                    // update to match both updater and update
+                    || asset_name_lower.contains("update")));
+        let is_exe_dist = !is_installer_dist && is_exe;
+        let is_zip_dist = asset_name_lower.ends_with(".zip")
             && !asset_name_lower.contains("mac") // Mac Os
             && !asset_name_lower.contains("darwin") // Darwin
             && !asset_name_lower.contains("linux"); // Linux
-        let is_exe = file_extension == "exe";
-        let is_installer_dist = file_extension == "msi"
-            || (is_exe
-                && (asset_name_lower.contains("installer") || asset_name_lower.contains("setup")));
-        let is_exe_dist = !is_installer_dist && is_exe;
         if is_exe_dist || is_zip_dist || is_installer_dist {
             let dist_type = if is_exe_dist {
                 DistType::Exe
@@ -131,11 +144,12 @@ impl Repo {
             } else {
                 DistType::Installer
             };
-            let is_exact_match = if is_exe_dist && asset_name_lower != repo_name_lower {
-                false
-            } else {
-                true
-            };
+            let is_exact_match =
+                if is_exe_dist && Repo::purify_exe_name(&asset_name_lower) != Repo::purify_exe_name(repo_name_lower) {
+                    false
+                } else {
+                    true
+                };
             return Some(AssetInfo {
                 file_title: asset.name.clone(),
                 download_url: asset.browser_download_url.clone(),
@@ -154,7 +168,7 @@ impl Repo {
     ) -> Option<Dist> {
         match preferred_dist_type {
             None => {
-                // The order in which each installer type is compared is: Exe > Zip > Normal
+                // The order in which each installer type is compared is:Zip > Exe > Normal
                 // b compared to a so that sorting is in descending order
                 asset_infos.sort_by(|a, b| b.dist_type.partial_cmp(&a.dist_type).unwrap());
                 // is_exact_match > !is_exact_match, !ai cause default sorting is in ascending so

@@ -28,13 +28,15 @@ pub fn parse_commands() -> Command {
             .help(format!("Path to {}", help))
     };
     let folder_path_arg = |help: &str| path_arg(&format!("the folder {}", help));
-    let force_flag_arg = |help: &str| {
-        Arg::new("force")
-            .short('f')
-            .long("force")
+    let flag_arg = |help: &'static str, name: &'static str, short: char| {
+        Arg::new(name)
+            .short(short)
+            .long(name)
+            .help(help)
             .action(ArgAction::SetTrue)
-            .help(help.to_owned())
     };
+    let force_flag_arg = |help: &'static str| flag_arg(help, "force", 'f');
+
     let dist_type_arg = Arg::new("dist")
         .value_parser(EnumValueParser::<DistType>::new())
         .short('d')
@@ -44,7 +46,22 @@ pub fn parse_commands() -> Command {
     let purge_command = Command::new("purge")
         .about("Remove packages that were uninstalled outside senget from the package database");
     let clear_cache_command = Command::new("clear-cache").about("Clear cached distributables");
-    let run_command = Command::new("run").about("Run a package").arg(&name_arg);
+    let run_command = Command::new("run")
+        .about("Run a package")
+        .arg(&name_arg)
+        .arg(flag_arg(
+            "Exit immediately after starting the package",
+            "no-wait",
+            'n',
+        ))
+        .arg(
+            Arg::new("args")
+                .short('a')
+                .long("args")
+                .num_args(0..)
+                .allow_hyphen_values(true)
+                .help("Arguments to pass to the package"),
+        );
     let show_command = Command::new("show")
         .about("Show information about a package")
         .arg(&name_arg);
@@ -133,6 +150,13 @@ fn get_path(arg_match: &ArgMatches) -> PathBuf {
 fn get_dist_type(arg_match: &ArgMatches) -> Option<&DistType> {
     arg_match.get_one("dist")
 }
+
+fn get_string_vector<'a>(id: &str, arg_match: &'a ArgMatches) -> Vec<&'a String> {
+    arg_match
+        .get_many::<String>(id)
+        .unwrap_or_default()
+        .collect()
+}
 pub async fn match_commands(
     commands: Command,
     db: &mut PackageDBManager,
@@ -145,7 +169,12 @@ pub async fn match_commands(
         }
         Some(("purge", _)) => purge_packages(db),
         Some(("clear-cache", _)) => clear_cached_distributables(&statics.dists_folder_path),
-        Some(("run", arg_match)) => run_package(get_name(arg_match), db),
+        Some(("run", arg_match)) => run_package(
+            get_name(arg_match),
+            get_flag("no-wait", arg_match),
+            &get_string_vector("args", arg_match),
+            db,
+        ),
         Some(("show", arg_match)) => show_package(get_name(arg_match), db, &statics.client).await,
         Some(("search", arg_match)) => search_repos(get_name(arg_match), &statics.client).await,
         Some(("export", arg_match)) => export_packages(&get_path(arg_match), db),

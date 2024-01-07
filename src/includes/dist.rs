@@ -67,10 +67,11 @@ impl From<clap::builder::Str> for DistType {
 /// The type of the distributable
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dist {
-    /// Standalone executable distributable
-    Exe(ExeDist),
     /// Zipped package distributable
     Zip(ZipDist),
+    /// Standalone executable distributable
+    Exe(ExeDist), // An installer may be falsely id'd as standalone exe incase the author didn't
+    // put installer/setup/updater/update in the installer title
     /// Installer distributable e.g., inno-setup, nsis-installer or msi
     Installer(InstallerDist),
 }

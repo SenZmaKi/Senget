@@ -25,12 +25,12 @@ use crate::includes::{
 use super::{
     dist::{DistType, InstallerDist, StartmenuFolders},
     error::{
-        check_for_other_errors, AlreadyUptoDateError, FailedToUninstallError, NoExecutableError,
-        NoInstalledPackageError, NoPackageError, NoValidDistError, PackageAlreadyInstalledError,
-        VersionAlreadyInstalledError, ExportFileNotFoundError,
+        check_for_other_errors, AlreadyUptoDateError, ExportFileNotFoundError,
+        FailedToUninstallError, NoExecutableError, NoInstalledPackageError, NoPackageError,
+        NoValidDistError, PackageAlreadyInstalledError, VersionAlreadyInstalledError,
     },
     package::ExportedPackage,
-    utils::{EXPORTED_PACKAGES_FILENAME, IBYTES_TO_MBS_DIVISOR, DEBUG},
+    utils::{DEBUG, EXPORTED_PACKAGES_FILENAME, IBYTES_TO_MBS_DIVISOR},
 };
 
 pub struct Statics {
@@ -48,7 +48,8 @@ impl Statics {
         let client = setup_client()?;
         let packages_dists_path = Dist::generate_dists_folder_path(root_dir)?;
         let startmenu_folders = InstallerDist::generate_startmenu_paths();
-        let packages_path = Dist::generate_packages_folder_path(root_dir, &startmenu_folders.appdata)?;
+        let packages_path =
+            Dist::generate_packages_folder_path(root_dir, &startmenu_folders.appdata)?;
         let user_uninstall_reg_key = InstallerDist::generate_user_uninstall_reg_key()?;
         let machine_uninstall_reg_key = InstallerDist::generate_machine_uninstall_reg_key()?;
         let version_regex = github::api::Repo::generate_version_regex();
@@ -475,7 +476,11 @@ pub async fn import_packages(
     File::open(export_file_path)?.read_to_string(&mut package_str)?;
     let packages: Vec<ExportedPackage> = serde_json::from_str(&package_str)?;
     for p in packages {
-        let version = if ignore_versions{"latest"} else {&p.version};
+        let version = if ignore_versions {
+            "latest"
+        } else {
+            &p.version
+        };
         if let Err(err) = install_package(
             &p.lowercase_fullname,
             version,
@@ -507,7 +512,12 @@ pub async fn import_packages(
     Ok(())
 }
 
-pub fn run_package(name: &str, db: &PackageDBManager) -> Result<(), KnownErrors> {
+pub fn run_package(
+    name: &str,
+    no_wait: bool,
+    args: &Vec<&String>,
+    db: &PackageDBManager,
+) -> Result<(), KnownErrors> {
     match db.find_package(name)? {
         Some(p) => match &p.install_info.executable_path {
             Some(ep) => {
@@ -515,7 +525,13 @@ pub fn run_package(name: &str, db: &PackageDBManager) -> Result<(), KnownErrors>
                     return Err(NoExecutableError.into());
                 }
                 println!("Starting {}.. .", p.repo.name);
-                Command::new(ep).spawn()?;
+                let mut command  = Command::new(ep);
+                command.args(args);
+                if no_wait {
+                    command.spawn()?;
+                } else {
+                    command.status()?;
+                };
                 Ok(())
             }
             None => Err(NoExecutableError.into()),
