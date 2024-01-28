@@ -40,7 +40,7 @@ pub fn parse_commands() -> Command {
         .value_parser(EnumValueParser::<DistType>::new())
         .short('d')
         .long("dist")
-        .help("Distributable type to download");
+        .help("Distributable type to download, when set to exe an installer may instead\nbe downloaded cause sometimes installers get falsely identified as exe.\nexe means Standalone executable.");
     let list_command = Command::new("list").about("List installed packages");
     let purge_command = Command::new("purge")
         .about("Remove packages that were uninstalled outside senget from the package database");

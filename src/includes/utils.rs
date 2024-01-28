@@ -14,7 +14,7 @@ pub const VERSION: &str = "0.1.0";
 pub const DESCRIPTION: &str = "Blazingly fast Windows package manager";
 pub const MSI_EXEC: &str = "MsiExec.exe";
 pub const IBYTES_TO_MBS_DIVISOR: u64 = 1024 * 1024;
-// FIXME: set to false on deployment
+// NOTE: set to false on production
 pub const DEBUG: bool = true;
 
 pub trait Take<T> {

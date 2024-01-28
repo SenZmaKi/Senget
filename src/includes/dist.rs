@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fs;
 use std::fs::File;
-use std::io;
 use std::io::Write;
+use std::io::{self, Read};
 use std::{
     collections::HashSet,
     env,
@@ -245,6 +245,31 @@ impl ExeDist {
         self.package_info
             .download(distributables_folder_path, client)
             .await
+    }
+
+    // NOTE: Make sure you run this every time a Dist is downloaded
+    pub fn check_if_is_actually_installer(
+        self,
+        downloaded_dist_path: &Path,
+    ) -> Result<Dist, SengetErrors> {
+        let mut buffer = Vec::new();
+        File::open(downloaded_dist_path)?.read_to_end(&mut buffer)?;
+        let text: String = buffer
+            .into_iter()
+            .filter_map(|byte| {
+                if byte.is_ascii_alphabetic() {
+                    return Some(byte as char);
+                }
+                None
+            })
+            .collect();
+        if text.contains("Inno") || text.contains("Nullsoft") {
+            return Ok(Dist::Installer(InstallerDist {
+                package_info: self.package_info,
+            }));
+        }
+
+        Ok(Dist::Exe(self))
     }
 
     pub fn install(
@@ -503,7 +528,6 @@ impl InstallerDist {
                         .get_value("QuietUninstallString")
                         .or_else(|_| subkey.get_value("UninstallString"))
                         .ok();
-                    dbg!(&uninstall_command);
                     return Ok(uninstall_command);
                 }
             }

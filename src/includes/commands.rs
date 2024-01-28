@@ -210,8 +210,11 @@ async fn internal_download_package(
                 }
             };
             match dist {
-                Some(dist) => {
+                Some(mut dist) => {
                     let dist_path = dist.download(client, dists_folder_path).await?;
+                    if let Dist::Exe(exe_dist) = dist {
+                        dist = exe_dist.check_if_is_actually_installer(&dist_path)?;
+                    }
                     Ok((repo, dist, dist_path))
                 }
                 None => Err(NoValidDistError.into()),

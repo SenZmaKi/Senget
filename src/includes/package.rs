@@ -33,7 +33,6 @@ pub struct Package {
 
 impl fmt::Display for Package {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-
         write!(
             f,
             "{}\nVersion: {}\nDistributable type: {:?}\nInstallation Folder: {}",
