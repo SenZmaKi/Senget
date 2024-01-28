@@ -271,15 +271,15 @@ pub fn uninstall_package(
 ) -> Result<(), SengetErrors> {
     match db.find_package(name)? {
         Some(package) => {
-            let task = || package.uninstall(startmenu_appdata_folder);
-            let uninstalled =
-                loading_animation(format!("Uninstalling {}", package.repo.name), task)?;
-            if uninstalled || force {
-                db.remove_package(&package)?;
-                Ok(println!("Successfully uninstalled {}.", package.repo.name))
-            } else {
+            let task = || -> Result<(), _> {
+                let was_uninstalled = package.uninstall(startmenu_appdata_folder)?;
+                if was_uninstalled || force {
+                    return db.remove_package(&package);
+                }
                 Err(FailedToUninstallError.into())
-            }
+            };
+            loading_animation(format!("Uninstalling {}", package.repo.name), task)?;
+            Ok(println!("Successfully uninstalled {}.", package.repo.name))
         }
         None => Err(NoInstalledPackageError.into()),
     }

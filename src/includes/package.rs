@@ -4,7 +4,7 @@ use crate::includes::{
     dist::{Dist, DistType, StartmenuFolders},
     error::SengetErrors,
     senget_manager::env::remove_package_folder_from_senget_env_var,
-    utils::{PathStr, MSI_EXEC},
+    utils::{PathStr, INNO_SILENT_ARG, MSI_EXEC, NSIS_SILENT_ARG},
 };
 use crate::{dist::InstallInfo, github::api::Repo};
 use core::fmt;
@@ -84,7 +84,7 @@ impl Package {
                 // "/currentuser /S"
                 let args_string = split.next().unwrap_or_default();
                 // ["/currentuser", "/S"]
-                let args = args_string.split(" - ").collect::<Vec<&str>>();
+                let args = args_string.split(" ").filter(|s| !s.is_empty()).collect();
                 (program, args)
             }
         }
@@ -112,7 +112,14 @@ impl Package {
         match &self.install_info.uninstall_command {
             Some(us) => {
                 let (program, args) = Package::extract_program_and_args(us);
-                if let Err(err) = Command::new(program).args(args).output() {
+                let result = if args.is_empty() {
+                    Command::new(program)
+                        .args([NSIS_SILENT_ARG, INNO_SILENT_ARG])
+                        .output()
+                } else {
+                    Command::new(program).args(args).output()
+                };
+                if let Err(err) = result {
                     // TODO: Change this to err.kind() == io::Error::ErrorKind::InvalidFileName when it becomes stable
                     if err.to_string().contains(
                         "The filename, directory name, or volume label syntax is incorrect.",

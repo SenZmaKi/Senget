@@ -26,15 +26,13 @@ use crate::includes::utils::Cmd;
 use crate::includes::{
     error::{ContentLengthError, NoExeFoundInZipError, SengetErrors},
     senget_manager::env::add_package_folder_to_senget_env_var,
-    utils::{FilenameLower, FolderItems, MoveDirAll, PathStr, Take, DEBUG, MSI_EXEC},
+    utils::{FilenameLower, FolderItems, MoveDirAll, PathStr, Take, DEBUG, MSI_EXEC, NSIS_SILENT_ARG, INNO_SILENT_ARG},
 };
 
 // Running an msi installer that needs admin access silently is problematic since
 // it'll just exit silently without an error if it fails cause of lack of admin access
 // and there's no way to know that it needs admin access ahead of time
 // const MSI_SILENT_ARG: &str = "/qn";
-const INNO_SILENT_ARG: &str = "/VERYSILENT";
-const NSIS_SILENT_ARG: &str = "/S";
 const STARTMENU_FOLDER_ENDPOINT: &str = "\\Microsoft\\Windows\\Start Menu\\Programs";
 const PROGRAMS_FOLDER: &str = "Local\\Programs";
 

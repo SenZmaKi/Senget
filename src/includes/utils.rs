@@ -17,6 +17,8 @@ pub const MSI_EXEC: &str = "MsiExec.exe";
 pub const IBYTES_TO_MBS_DIVISOR: u64 = 1024 * 1024;
 // NOTE: set to false on production
 pub const DEBUG: bool = true;
+pub const INNO_SILENT_ARG: &str = "/VERYSILENT";
+pub const NSIS_SILENT_ARG: &str = "/S";
 
 pub trait Cmd {
     fn cmd() -> Command;
