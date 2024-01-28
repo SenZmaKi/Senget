@@ -1,8 +1,4 @@
 //!Manages senget package
-use std::{io, path::PathBuf};
-
-use regex::Regex;
-use reqwest::Client;
 
 use crate::includes::{
     database::PackageDatabase,
@@ -11,6 +7,9 @@ use crate::includes::{
     github::api::Repo,
     package::Package,
 };
+use regex::Regex;
+use reqwest::Client;
+use std::{io, path::PathBuf};
 
 pub fn generate_senget_package(
     root_dir: PathBuf,
@@ -40,18 +39,17 @@ pub fn generate_senget_package(
 
 pub fn setup_senget_package(
     db: &PackageDatabase,
-    senget_package: &Package, /*
-                                The chance of the package being outdated or for the current execution to be the first run are way
-                                lower than for this to be a normal run so instead of needlessly copying senget_package every time
-                              this function is called we use reference such that we'll only copy it internally incase the aforementioned conditions are met
-                              */
+    // The chance of the package being outdated or for the current execution to be the first run are way
+    // lower than for this to be a normal run so instead of needlessly copying senget_package every time
+    // this function is called we use a reference such that we'll only copy it internally incase the
+    // aforementioned conditions are met
+    senget_package: &Package,
     version: &str,
 ) -> Result<(), SengetErrors> {
     match db.find_package("Senget")? {
         Some(old_senget_package) => {
             if old_senget_package.version != version {
-                let old_senget_package = &old_senget_package.clone();
-                db.update_package(old_senget_package, senget_package.clone())?;
+                db.update_package(&old_senget_package, senget_package.clone())?;
             };
         }
         None => {
@@ -70,6 +68,8 @@ pub async fn check_if_senget_update_available(
         .repo
         .get_latest_dist(client, version_regex, &Some(DistType::Installer))
         .await?;
-    Ok(latest_dist.is_some())
+    if let Some(dist) = latest_dist {
+        return Ok(dist.version() != senget_package.version);
+    }
+    Ok(false)
 }
-

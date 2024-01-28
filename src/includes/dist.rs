@@ -23,17 +23,9 @@ use winreg::{
 use zip::ZipArchive;
 
 use crate::includes::{
-    error::{ContentLengthError, RequestIoContentLengthError},
-    utils::{DEBUG, MSI_EXEC},
-};
-
-use crate::includes::error::{NoExeFoundError, ZipIoExeError};
-
-use super::senget_manager::env::add_package_folder_to_senget_env_var;
-use super::utils::MoveDirAll;
-use super::{
-    error::SengetErrors,
-    utils::{FilenameLower, FolderItems, PathStr, Take},
+    error::{ContentLengthError, NoExeFoundInZipError, SengetErrors},
+    senget_manager::env::add_package_folder_to_senget_env_var,
+    utils::{FilenameLower, FolderItems, MoveDirAll, PathStr, Take, DEBUG, MSI_EXEC},
 };
 
 // Running an msi installer that needs admin access silently is problematic since
@@ -56,6 +48,7 @@ pub enum DistType {
     Zip,
     Exe,
 }
+
 impl From<clap::builder::Str> for DistType {
     fn from(value: clap::builder::Str) -> Self {
         if value == "installer" {
@@ -74,8 +67,7 @@ pub enum Dist {
     /// Zipped package distributable
     Zip(ZipDist),
     /// Standalone executable distributable
-    Exe(ExeDist), // An installer may be falsely id'd as standalone exe incase the author didn't
-    // put installer/setup/updater/update in the installer title
+    Exe(ExeDist),
     /// Installer distributable e.g., inno-setup, nsis-installer or msi
     Installer(InstallerDist),
 }
@@ -92,7 +84,7 @@ impl Dist {
         &self,
         client: &Client,
         dists_folder_path: &Path,
-    ) -> Result<PathBuf, RequestIoContentLengthError> {
+    ) -> Result<PathBuf, SengetErrors> {
         match self {
             Dist::Exe(dist) => dist.download(dists_folder_path, client).await,
             Dist::Zip(dist) => dist.download(dists_folder_path, client).await,
@@ -215,7 +207,7 @@ impl PackageInfo {
         &self,
         download_folder_path: &Path,
         client: &reqwest::Client,
-    ) -> Result<PathBuf, RequestIoContentLengthError> {
+    ) -> Result<PathBuf, SengetErrors> {
         let path = download_folder_path.join(&self.file_title);
         let mut file = File::create(&path)?;
         let mut response = client.get(&self.download_url).send().await?;
@@ -249,7 +241,7 @@ impl ExeDist {
         &self,
         distributables_folder_path: &Path,
         client: &reqwest::Client,
-    ) -> Result<PathBuf, RequestIoContentLengthError> {
+    ) -> Result<PathBuf, SengetErrors> {
         self.package_info
             .download(distributables_folder_path, client)
             .await
@@ -294,7 +286,7 @@ impl ZipDist {
         &self,
         dists_folder_path: &Path,
         client: &reqwest::Client,
-    ) -> Result<PathBuf, RequestIoContentLengthError> {
+    ) -> Result<PathBuf, SengetErrors> {
         if DEBUG {
             let path = dists_folder_path.join(&self.package_info.file_title);
             if path.is_file() {
@@ -364,7 +356,7 @@ impl ZipDist {
         downloaded_dist_path: &Path,
         packages_folder_path: &Path,
         create_shortcut_file: bool,
-    ) -> Result<InstallInfo, ZipIoExeError> {
+    ) -> Result<InstallInfo, SengetErrors> {
         let installation_folder = packages_folder_path.join(&self.package_info.name);
         ZipArchive::new(File::open(downloaded_dist_path)?)?.extract(&installation_folder)?;
         let inner_unzip_dir = ZipDist::find_inner_unzip_folder(installation_folder.to_owned())?;
@@ -379,7 +371,7 @@ impl ZipDist {
             ZipDist::find_executable_path(&self_name_lower, installation_folder.to_owned())?;
         if executable_path.is_none() {
             fs::remove_dir_all(installation_folder)?;
-            return Err(ZipIoExeError::NoExeFouundError(NoExeFoundError));
+            return Err(SengetErrors::NoExeFound(NoExeFoundInZipError));
         }
         Ok(InstallInfo {
             executable_path,
@@ -401,7 +393,7 @@ impl InstallerDist {
         &self,
         dists_folder_path: &Path,
         client: &reqwest::Client,
-    ) -> Result<PathBuf, RequestIoContentLengthError> {
+    ) -> Result<PathBuf, SengetErrors> {
         let prev_installer = dists_folder_path.join(&self.package_info.file_title);
         if prev_installer.is_file() {
             println!(
@@ -699,4 +691,3 @@ mod tests {
         assert!(install_info.uninstall_command.is_some());
     }
 }
-

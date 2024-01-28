@@ -2,7 +2,9 @@
 
 use mslnk::MSLinkError;
 use reqwest;
+use zip::result::ZipError;
 use std::fmt;
+use std::fmt::Display;
 use std::io;
 
 pub struct ContentLengthError;
@@ -20,8 +22,8 @@ impl fmt::Debug for ExportFileNotFoundError {
     }
 }
 
-pub struct NoExeFoundError;
-impl fmt::Debug for NoExeFoundError {
+pub struct NoExeFoundInZipError;
+impl fmt::Debug for NoExeFoundInZipError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "No executable found in the unpacked zip file")
     }
@@ -101,8 +103,6 @@ pub enum SengetErrors {
     RequestError(reqwest::Error),
     IoError(io::Error),
     PrivilegeError(PrivilegeError),
-    RequestIoError(RequestIoError),
-    RequestIoContentLengthError(RequestIoContentLengthError),
     NoExecutableError(NoExecutableError),
     VersionAlreadyInstalledError(VersionAlreadyInstalledError),
     AlreadyUptoDateError(AlreadyUptoDateError),
@@ -113,10 +113,11 @@ pub enum SengetErrors {
     PackageAlreadyInstalledError(PackageAlreadyInstalledError),
     ContentLengthError(ContentLengthError),
     NetworkError(NetworkError),
-    ZipIoExeError(ZipIoExeError),
+    NoExeFound(NoExeFoundInZipError),
     SerdeError(serde_json::error::Error),
     ExportFileNotFoundError(ExportFileNotFoundError),
-    MSLinkError(MSLinkError)
+    MSLinkError(MSLinkError),
+    ZipError(ZipError)
 }
 
 impl fmt::Debug for SengetErrors {
@@ -126,8 +127,6 @@ impl fmt::Debug for SengetErrors {
             SengetErrors::RequestError(err) => write!(f, "{:?}", err),
             SengetErrors::IoError(err) => write!(f, "{:?}", err),
             SengetErrors::PrivilegeError(err) => write!(f, "{:?}", err),
-            SengetErrors::RequestIoError(err) => write!(f, "{:?}", err),
-            SengetErrors::RequestIoContentLengthError(err) => write!(f, "{:?}", err),
             SengetErrors::VersionAlreadyInstalledError(err) => write!(f, "{:?}", err),
             SengetErrors::AlreadyUptoDateError(err) => write!(f, "{:?}", err),
             SengetErrors::FailedToUninstallError(err) => write!(f, "{:?}", err),
@@ -137,106 +136,22 @@ impl fmt::Debug for SengetErrors {
             SengetErrors::PackageAlreadyInstalledError(err) => write!(f, "{:?}", err),
             SengetErrors::ContentLengthError(err) => write!(f, "{:?}", err),
             SengetErrors::NetworkError(err) => write!(f, "{:?}", err),
-            SengetErrors::ZipIoExeError(err) => write!(f, "{:?}", err),
+            SengetErrors::NoExeFound(err) => write!(f, "{:?}", err),
             SengetErrors::SerdeError(err) => write!(f, "{:?}", err),
             SengetErrors::ExportFileNotFoundError(err) => write!(f, "{:?}", err),
             SengetErrors::MSLinkError(err) => write!(f, "{:?}", err),
+            SengetErrors::ZipError(err) => write!(f, "{:?}", err),
         }
     }
 }
-
-pub enum ZipIoExeError {
-    IoError(io::Error),
-    ZipError(zip::result::ZipError),
-    NoExeFouundError(NoExeFoundError),
-}
-
-impl fmt::Debug for ZipIoExeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ZipIoExeError::IoError(err) => write!(f, "{:?}", err),
-            ZipIoExeError::ZipError(err) => write!(f, "{:?}", err),
-            ZipIoExeError::NoExeFouundError(err) => write!(f, "{:?}", err),
-        }
-    }
-}
-
-impl From<io::Error> for ZipIoExeError {
-    fn from(error: io::Error) -> Self {
-        ZipIoExeError::IoError(error)
-    }
-}
-
-impl From<zip::result::ZipError> for ZipIoExeError {
-    fn from(error: zip::result::ZipError) -> Self {
-        ZipIoExeError::ZipError(error)
-    }
-}
-
-pub enum RequestIoContentLengthError {
-    RequestIoError(RequestIoError),
-    ContentLengthError(ContentLengthError),
-}
-
-impl fmt::Debug for RequestIoContentLengthError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            RequestIoContentLengthError::RequestIoError(err) => write!(f, "{:?}", err),
-            RequestIoContentLengthError::ContentLengthError(err) => write!(f, "{:?}", err),
-        }
-    }
-}
-
-pub enum RequestIoError {
-    IoError(io::Error),
-    RequestError(reqwest::Error),
-}
-
-impl fmt::Debug for RequestIoError {
+impl Display for SengetErrors {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            RequestIoError::IoError(err) => write!(f, "{:?}", err),
-            RequestIoError::RequestError(err) => write!(f, "{:?}", err),
-        }
+        write!(f, "{:?}", self)
     }
 }
+impl std::error::Error for SengetErrors {
 
-impl From<io::Error> for RequestIoError {
-    fn from(error: io::Error) -> Self {
-        RequestIoError::IoError(error)
-    }
 }
-
-impl From<reqwest::Error> for RequestIoError {
-    fn from(error: reqwest::Error) -> Self {
-        RequestIoError::RequestError(error)
-    }
-}
-
-impl From<ContentLengthError> for RequestIoContentLengthError {
-    fn from(error: ContentLengthError) -> Self {
-        RequestIoContentLengthError::ContentLengthError(error)
-    }
-}
-
-impl From<io::Error> for RequestIoContentLengthError {
-    fn from(error: io::Error) -> Self {
-        RequestIoContentLengthError::RequestIoError(RequestIoError::IoError(error))
-    }
-}
-
-impl From<reqwest::Error> for RequestIoContentLengthError {
-    fn from(error: reqwest::Error) -> Self {
-        RequestIoContentLengthError::RequestIoError(RequestIoError::RequestError(error))
-    }
-}
-
-impl From<ZipIoExeError> for SengetErrors {
-    fn from(error: ZipIoExeError) -> Self {
-        SengetErrors::ZipIoExeError(error)
-    }
-}
-
 impl From<reqwest::Error> for SengetErrors {
     fn from(error: reqwest::Error) -> Self {
         SengetErrors::RequestError(error)
@@ -259,88 +174,85 @@ impl From<ExportFileNotFoundError> for SengetErrors {
         SengetErrors::ExportFileNotFoundError(err)
     }
 }
-
-impl From<RequestIoError> for SengetErrors {
-    fn from(error: RequestIoError) -> Self {
-        SengetErrors::RequestIoError(error)
+impl From<ContentLengthError> for SengetErrors {
+    fn from(err: ContentLengthError) -> Self {
+        SengetErrors::ContentLengthError(err)
     }
 }
-
-impl From<serde_json::error::Error> for SengetErrors {
-    fn from(error: serde_json::error::Error) -> Self {
-        SengetErrors::SerdeError(error)
+impl From<serde_json::Error> for SengetErrors {
+    fn from(err: serde_json::Error) -> Self {
+        SengetErrors::SerdeError(err)
     }
 }
-
-impl From<RequestIoContentLengthError> for SengetErrors {
-    fn from(error: RequestIoContentLengthError) -> Self {
-        SengetErrors::RequestIoContentLengthError(error)
-    }
-}
-
 impl From<NoExecutableError> for SengetErrors {
-    fn from(error: NoExecutableError) -> Self {
-        SengetErrors::NoExecutableError(error)
+    fn from(err: NoExecutableError) -> Self {
+        SengetErrors::NoExecutableError(err)
+    }
+}
+impl From<FailedToUninstallError> for SengetErrors {
+    fn from(err: FailedToUninstallError) -> Self {
+        SengetErrors::FailedToUninstallError(err)
     }
 }
 
-impl From<NoInstalledPackageError> for SengetErrors {
-    fn from(error: NoInstalledPackageError) -> Self {
-        SengetErrors::NoInstalledPackageError(error)
-    }
-}
 impl From<VersionAlreadyInstalledError> for SengetErrors {
-    fn from(error: VersionAlreadyInstalledError) -> Self {
-        SengetErrors::VersionAlreadyInstalledError(error)
+    fn from(err: VersionAlreadyInstalledError) -> Self {
+        SengetErrors::VersionAlreadyInstalledError(err)
     }
 }
 
 impl From<AlreadyUptoDateError> for SengetErrors {
-    fn from(error: AlreadyUptoDateError) -> Self {
-        SengetErrors::AlreadyUptoDateError(error)
+    fn from(err: AlreadyUptoDateError) -> Self {
+        SengetErrors::AlreadyUptoDateError(err)
     }
 }
-impl From<FailedToUninstallError> for SengetErrors {
-    fn from(error: FailedToUninstallError) -> Self {
-        SengetErrors::FailedToUninstallError(error)
+
+
+impl From<NoInstalledPackageError> for SengetErrors {
+    fn from(err: NoInstalledPackageError) -> Self {
+        SengetErrors::NoInstalledPackageError(err)
     }
 }
 
 impl From<NoPackageError> for SengetErrors {
-    fn from(error: NoPackageError) -> Self {
-        SengetErrors::NoPackageError(error)
+    fn from(err: NoPackageError) -> Self {
+        SengetErrors::NoPackageError(err)
     }
 }
 
 impl From<NoValidDistError> for SengetErrors {
-    fn from(error: NoValidDistError) -> Self {
-        SengetErrors::NoValidDistError(error)
+    fn from(err: NoValidDistError) -> Self {
+        SengetErrors::NoValidDistError(err)
     }
 }
 
 impl From<PackageAlreadyInstalledError> for SengetErrors {
-    fn from(error: PackageAlreadyInstalledError) -> Self {
-        SengetErrors::PackageAlreadyInstalledError(error)
-    }
-}
-
-impl From<ContentLengthError> for SengetErrors {
-    fn from(error: ContentLengthError) -> Self {
-        SengetErrors::ContentLengthError(error)
+    fn from(err: PackageAlreadyInstalledError) -> Self {
+        SengetErrors::PackageAlreadyInstalledError(err)
     }
 }
 
 impl From<NetworkError> for SengetErrors {
-    fn from(error: NetworkError) -> Self {
-        SengetErrors::NetworkError(error)
-    }
-}
-impl From<MSLinkError> for SengetErrors {
-    fn from(error: MSLinkError) -> Self {
-        SengetErrors::MSLinkError(error)
+    fn from(err: NetworkError) -> Self {
+        SengetErrors::NetworkError(err)
     }
 }
 
+impl From<MSLinkError> for SengetErrors {
+    fn from(err: MSLinkError) -> Self {
+        SengetErrors::MSLinkError(err)
+    }
+}
+impl From<ZipError> for SengetErrors {
+    fn from(err: ZipError) -> Self {
+        SengetErrors::ZipError(err)
+    }
+}
+impl From<NoExeFoundInZipError> for SengetErrors {
+    fn from(err: NoExeFoundInZipError) -> Self {
+        SengetErrors::NoExeFound(err)
+    }
+}
 pub fn check_for_other_errors(err: SengetErrors) -> SengetErrors {
     let str_error = format!("{:?}", err);
     if str_error.contains("The requested operation requires elevation.") {
@@ -355,4 +267,5 @@ pub fn print_error(err: SengetErrors) {
     let err = check_for_other_errors(err);
     eprintln!("\n{:?}", err);
 }
+
 

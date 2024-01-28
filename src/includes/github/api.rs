@@ -2,7 +2,8 @@
 
 use crate::{
     github::serde_json_types::{
-        AssetsResponseJson, ReleasesResponseJson, RepoResponseJson, SearchResponseJson,
+        Asset, AssetsResponseJson, ReleaseResponseJson, ReleasesResponseJson, RepoResponseJson,
+        SearchResponseJson,
     },
     includes::{
         dist::{Dist, DistType, PackageInfo},
@@ -12,8 +13,6 @@ use crate::{
 use core::fmt;
 use regex::{self, Regex};
 use serde::{Deserialize, Serialize};
-
-use super::serde_json_types::{Asset, ReleaseResponseJson};
 
 const GITHUB_API_ENTRY_POINT: &str = "https://api.github.com";
 
@@ -104,7 +103,7 @@ impl Repo {
     }
 
     fn purify_exe_name(name: &str) -> String {
-        name.replace(['-', '_', '.', ], "")
+        name.replace(['-', '_', '.'], "")
             .replace("exe", "")
             .replace("windows", "")
             .replace("win", "")
@@ -127,7 +126,7 @@ impl Repo {
         let is_exe = asset_name_lower.ends_with(".exe");
         let is_installer_dist = asset_name_lower.ends_with(".msi")
             || (is_exe
-                && (asset_name_lower.contains("installer")
+                && (asset_name_lower.contains("install")
                     || asset_name_lower.contains("setup")
                     // update to match both updater and update
                     || asset_name_lower.contains("update")));
@@ -358,4 +357,3 @@ pub mod tests {
         assert_eq!(dist.package_info.version, "0.3.1");
     }
 }
-

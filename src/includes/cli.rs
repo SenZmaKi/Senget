@@ -1,19 +1,18 @@
 //!Parses passed commands and arguments
-
-use crate::includes::commands::{
-    download_package, export_packages, import_packages, install_package, list_packages,
-    run_package, search_repos, show_package, uninstall_package,
+use crate::includes::{
+    commands::{
+        clear_cached_distributables, download_package, export_packages, import_packages,
+        install_package, list_packages, purge_packages, run_package, search_repos, show_package,
+        uninstall_package, update_handler, Statics,
+    },
+    database::PackageDatabase,
+    dist::DistType,
+    error::SengetErrors,
+    utils::{DESCRIPTION, EXPORTED_PACKAGES_FILENAME, VERSION},
 };
-use crate::includes::error::SengetErrors;
-use crate::includes::utils::{DESCRIPTION, VERSION};
 use clap::builder::EnumValueParser;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use std::path::PathBuf;
-
-use super::commands::{clear_cached_distributables, purge_packages, update_handler, Statics};
-use super::database::PackageDatabase;
-use super::dist::DistType;
-use super::utils::EXPORTED_PACKAGES_FILENAME;
 
 pub fn parse_commands() -> Command {
     let name_arg = Arg::new("name").help("Name of the package").required(true);
@@ -41,7 +40,7 @@ pub fn parse_commands() -> Command {
         .value_parser(EnumValueParser::<DistType>::new())
         .short('d')
         .long("dist")
-        .help("Distribution type to install/download");
+        .help("Distributable type to download");
     let list_command = Command::new("list").about("List installed packages");
     let purge_command = Command::new("purge")
         .about("Remove packages that were uninstalled outside senget from the package database");
@@ -226,9 +225,9 @@ pub async fn match_commands(
             .await
         }
 
+        // We will never reach here cause clap handles invalid commands
         _ => Ok(eprintln!(
             "Invalid command. Use --help for usage information."
         )),
     }
 }
-

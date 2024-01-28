@@ -2,22 +2,21 @@
 name = "senget"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Blazingly fast Windows package manager"
 
 [build-dependencies]
 winres = "0.1"
 
 [dependencies]
-reqwest = { version = "0.11.20", features = ["json", "blocking"] }
-regex = { version = "1.9.4" }
+reqwest = { version = "0.11.20", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0" }
-indicatif = "0.17.7"
-tokio = { version = "1.34.0", features = ["full", "macros"] }
-winreg = "0.52.0"
-lnk = { version = "0.5.1", features = ["default"] }
-spinners = "4.1.1"
+tokio = { version = "1.34.0", features = ["rt-multi-thread", "macros"] }
 clap = { version = "4.4.11", features = ["derive"] }
+serde_json = "1.0"
+indicatif = "0.17.7"
+winreg = "0.52.0"
+regex = "1.9.4"
+lnk = "0.5.1"
+spinners = "4.1.1"
 zip = "0.6.6"
 mslnk = "0.1.8"

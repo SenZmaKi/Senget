@@ -1,13 +1,11 @@
 //!Manages the database for installed packages
 
-use crate::includes::package::Package;
+use crate::includes::{error::SengetErrors, package::Package};
 use std::{
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
 };
-
-use super::error::SengetErrors;
 
 pub struct PackageDatabase {
     db_path: PathBuf,
@@ -20,11 +18,9 @@ impl PackageDatabase {
             fs::create_dir(&db_folder)?;
         }
         let db_path = db_folder.join("packages.json");
-        let pd = PackageDatabase {
-            db_path: db_path.clone(),
-        };
-        if !db_path.is_file() {
-            File::create(&db_path)?;
+        let pd = PackageDatabase { db_path };
+        if !pd.db_path.is_file() {
+            File::create(&pd.db_path)?;
             pd.update_packages(Vec::new())?;
         }
         Ok(pd)
@@ -61,7 +57,11 @@ impl PackageDatabase {
         self.update_packages(packages)
     }
 
-    pub fn update_package(&self, old_package: &Package, updated_package: Package) -> Result<(), SengetErrors> {
+    pub fn update_package(
+        &self,
+        old_package: &Package,
+        updated_package: Package,
+    ) -> Result<(), SengetErrors> {
         let mut packages = self.fetch_all_packages()?;
         let index = self.find_package_index(old_package, &packages).unwrap();
         packages[index] = updated_package;
@@ -75,4 +75,3 @@ impl PackageDatabase {
         self.update_packages(packages)
     }
 }
-

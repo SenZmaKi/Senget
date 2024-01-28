@@ -1,8 +1,8 @@
 //!Manages the SENGET_PACKAGES environment variable
 
 use std::io;
-
 use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+
 const SENGET_PACKAGES_ENV_VAR: &str = "SENGET_PACKAGES";
 
 pub fn setup_senget_packages_path_env_var(
@@ -60,4 +60,3 @@ fn open_env_var() -> Result<RegKey, io::Error> {
     let (env, _) = RegKey::predef(HKEY_CURRENT_USER).create_subkey("Environment")?;
     Ok(env)
 }
-

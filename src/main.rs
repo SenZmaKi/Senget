@@ -17,14 +17,25 @@ use includes::{
     },
     utils::{root_dir, PathStr, DESCRIPTION, VERSION},
 };
+use std::sync::Arc;
 
-async fn run() -> Result<(), SengetErrors> {
+
+
+fn init() -> Result<
+    (
+        clap::Command,
+        Statics,
+        PackageDatabase,
+        includes::package::Package,
+    ),
+    SengetErrors,
+> {
     let commands = cli::parse_commands();
-    let root_dir = root_dir();
-    let statics = Statics::new(&root_dir)?;
-    let db = PackageDatabase::new(&root_dir)?;
+    let root = root_dir();
+    let statics = Statics::new(&root)?;
+    let db = PackageDatabase::new(&root)?;
     let senget_package =
-        generate_senget_package(root_dir.clone(), VERSION.to_owned(), DESCRIPTION.to_owned())?;
+        generate_senget_package(root.clone(), VERSION.to_owned(), DESCRIPTION.to_owned())?;
     setup_senget_package(&db, &senget_package, VERSION)?;
     setup_senget_packages_path_env_var(
         &senget_package
@@ -34,11 +45,28 @@ async fn run() -> Result<(), SengetErrors> {
             .unwrap()
             .path_str()?,
     )?;
-    let update_available =
-        check_if_senget_update_available(&senget_package, &statics.client, &statics.version_regex);
-    match_commands(commands, &db, &statics).await?;
-    validate_cache_folder_size(&root_dir)?;
-    if update_available.await? {
+    Ok((commands, statics, db, senget_package))
+}
+
+async fn run() -> Result<(), SengetErrors> {
+    let (commands, statics, db, senget_package) = init()?;
+    let statics_arc = Arc::new(statics);
+    let statics_arc_ref_1 = Arc::clone(&statics_arc);
+    let statics_arc_ref_2 = Arc::clone(&statics_arc);
+    let (senget_result, update_available) = tokio::join!(
+        tokio::spawn(async move { match_commands(commands, &db, &statics_arc_ref_1).await }),
+        tokio::spawn(async move {
+            check_if_senget_update_available(
+                &senget_package,
+                &statics_arc_ref_2.client,
+                &statics_arc_ref_2.version_regex,
+            )
+            .await
+        })
+    );
+    senget_result.unwrap()?;
+    validate_cache_folder_size(&statics_arc.dists_folder_path)?;
+    if update_available.unwrap()? {
         println!("Senget update available, run \"senget update senget\" to update");
     }
     Ok(())
@@ -47,9 +75,6 @@ async fn run() -> Result<(), SengetErrors> {
 #[tokio::main]
 async fn main() {
     if let Err(err) = run().await {
-        // Absolute gigachad error handling
-        // Average something went wrong fan: 🤓
-        // Average full error stack trace enjoyer: 🗿
         print_error(err)
-    };
+    }
 }

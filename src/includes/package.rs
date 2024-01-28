@@ -1,5 +1,11 @@
 //!Manages installed package uninstallation and update
 
+use crate::includes::{
+    dist::{Dist, DistType, StartmenuFolders},
+    error::SengetErrors,
+    senget_manager::env::remove_package_folder_from_senget_env_var,
+    utils::{PathStr, MSI_EXEC},
+};
 use crate::{dist::InstallInfo, github::api::Repo};
 use core::fmt;
 use regex::Regex;
@@ -9,15 +15,6 @@ use std::fs;
 use std::path::Path;
 use std::{io, process::Command};
 use winreg::RegKey;
-
-use crate::includes::{
-    dist::Dist,
-    utils::{PathStr, MSI_EXEC},
-};
-
-use super::dist::{DistType, StartmenuFolders};
-use super::error::SengetErrors;
-use super::senget_manager::env::remove_package_folder_from_senget_env_var;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportedPackage {
@@ -36,11 +33,13 @@ pub struct Package {
 
 impl fmt::Display for Package {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+
         write!(
             f,
-            "{}\nVersion: {}\nInstallation Folder: {}",
+            "{}\nVersion: {}\nDistributable type: {:?}\nInstallation Folder: {}",
             self.repo,
             &self.version,
+            &self.install_info.dist_type,
             self.installation_folder_str()
         )
     }
@@ -58,7 +57,7 @@ impl Package {
             full_name: self.repo.full_name.clone(),
             version: self.version.clone(),
             preferred_dist_type: self.install_info.dist_type.clone(),
-            create_shorcut_file: self.install_info.create_shortcut_file
+            create_shorcut_file: self.install_info.create_shortcut_file,
         }
     }
     pub fn installation_folder_str(&self) -> String {
@@ -125,7 +124,7 @@ impl Package {
                 }
                 if let Some(executable_path) = self.install_info.executable_path.as_ref() {
                     if executable_path.is_file() {
-                        return Ok(false)
+                        return Ok(false);
                     }
                 }
                 Ok(true)
@@ -187,11 +186,19 @@ impl Package {
                 dist.package_info.version,
             ),
             Dist::Exe(dist) => (
-                dist.install(downloaded_dist_path, packages_folder_path, self.install_info.create_shortcut_file)?,
+                dist.install(
+                    downloaded_dist_path,
+                    packages_folder_path,
+                    self.install_info.create_shortcut_file,
+                )?,
                 dist.package_info.version,
             ),
             Dist::Zip(dist) => (
-                dist.install(downloaded_dist_path,  packages_folder_path, self.install_info.create_shortcut_file)?,
+                dist.install(
+                    downloaded_dist_path,
+                    packages_folder_path,
+                    self.install_info.create_shortcut_file,
+                )?,
                 dist.package_info.version,
             ),
         };
@@ -218,4 +225,3 @@ impl Package {
         ))
     }
 }
-

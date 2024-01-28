@@ -1,5 +1,23 @@
 //!Exposes command endpoints
 
+use crate::includes::{
+    database::PackageDatabase,
+    dist::Dist,
+    dist::{DistType, InstallerDist, StartmenuFolders},
+    error::SengetErrors,
+    error::{
+        check_for_other_errors, AlreadyUptoDateError, ExportFileNotFoundError,
+        FailedToUninstallError, NoExecutableError, NoInstalledPackageError, NoPackageError,
+        NoValidDistError, PackageAlreadyInstalledError, VersionAlreadyInstalledError,
+    },
+    github::{self, api::Repo},
+    package::ExportedPackage,
+    package::Package,
+    utils::{loading_animation, setup_client, FolderItems, PathStr},
+    utils::{DEBUG, EXPORTED_PACKAGES_FILENAME, IBYTES_TO_MBS_DIVISOR},
+};
+use regex::Regex;
+use reqwest::Client;
 use std::{
     fs::{self, DirEntry, File},
     io::{self, Write},
@@ -8,31 +26,7 @@ use std::{
     process::Command,
     u64,
 };
-
-use regex::Regex;
-use reqwest::Client;
 use winreg::RegKey;
-
-use crate::includes::{
-    database::PackageDatabase,
-    dist::Dist,
-    error::SengetErrors,
-    github::{self, api::Repo},
-    package::Package,
-    utils::{loading_animation, setup_client, FolderItems, PathStr},
-};
-
-use super::{
-    dist::{DistType, InstallerDist, StartmenuFolders},
-    error::{
-        check_for_other_errors, AlreadyUptoDateError, ExportFileNotFoundError,
-        FailedToUninstallError, NoExecutableError, NoInstalledPackageError, NoPackageError,
-        NoValidDistError, PackageAlreadyInstalledError, VersionAlreadyInstalledError,
-    },
-    package::ExportedPackage,
-    utils::{DEBUG, EXPORTED_PACKAGES_FILENAME, IBYTES_TO_MBS_DIVISOR},
-};
-
 pub struct Statics {
     pub client: Client,
     pub version_regex: Regex,
@@ -105,8 +99,8 @@ pub fn clear_cached_distributables(dists_folder_path: &Path) -> Result<(), Senge
     println!("Cleared {}MBs", size / IBYTES_TO_MBS_DIVISOR);
     Ok(())
 }
-pub fn validate_cache_folder_size(root_dir: &Path) -> Result<(), SengetErrors> {
-    let size: u64 = Dist::generate_dists_folder_path(root_dir)?
+pub fn validate_cache_folder_size(dists_folder_path: &Path) -> Result<(), SengetErrors> {
+    let size: u64 = dists_folder_path
         .folder_items()?
         .iter()
         .filter(|f| f.path().is_file())
@@ -115,7 +109,7 @@ pub fn validate_cache_folder_size(root_dir: &Path) -> Result<(), SengetErrors> {
     let size_mbs = size / IBYTES_TO_MBS_DIVISOR;
     if size_mbs >= 100 && !DEBUG {
         println!(
-            "Distributables cache folder is {}MBs, run \"senget clear-cache\" to clean it up",
+            "Distributables cache folder is {} MBs, run \"senget clear-cache\" to clean it up",
             size_mbs
         );
     }
@@ -429,7 +423,7 @@ pub async fn search_repos(query: &str, client: &Client) -> Result<(), SengetErro
                 r.description.clone().unwrap_or_default(),
             ]
         })
-        .collect::<Vec<Vec<String>>>();
+        .collect();
     let column_headers = vec!["Full Name".to_owned(), "Description".to_owned()];
     Ok(println!(
         "{}",
@@ -564,4 +558,3 @@ mod tests {
         list_packages(&db).unwrap();
     }
 }
-
