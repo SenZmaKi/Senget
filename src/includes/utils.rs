@@ -7,6 +7,7 @@ use std::{
     fs::{self, DirEntry},
     io,
     path::{Path, PathBuf},
+    process::Command,
 };
 
 pub const EXPORTED_PACKAGES_FILENAME: &str = "senget-packages.json";
@@ -16,6 +17,17 @@ pub const MSI_EXEC: &str = "MsiExec.exe";
 pub const IBYTES_TO_MBS_DIVISOR: u64 = 1024 * 1024;
 // NOTE: set to false on production
 pub const DEBUG: bool = true;
+
+pub trait Cmd {
+    fn cmd() -> Command;
+}
+impl Cmd for Command {
+    fn cmd() -> Command {
+        let mut command = Command::new("cmd");
+        command.arg("/c");
+        command
+    }
+}
 
 pub trait Take<T> {
     fn take(self, index: usize) -> Option<T>;
@@ -156,6 +168,7 @@ mod tests {
             Ok("Fondled".to_owned())
         }
     }
+
     #[test]
     fn test_loading() {
         let result = loading_animation("Fondling Balls".to_owned(), || actual_task(false));

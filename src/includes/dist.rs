@@ -22,6 +22,7 @@ use winreg::{
 };
 use zip::ZipArchive;
 
+use crate::includes::utils::Cmd;
 use crate::includes::{
     error::{ContentLengthError, NoExeFoundInZipError, SengetErrors},
     senget_manager::env::add_package_folder_to_senget_env_var,
@@ -471,8 +472,10 @@ impl InstallerDist {
     fn run_installation(file_extension: &str, file_path: &Path) -> Result<(), std::io::Error> {
         match file_extension == "msi" {
             true => Command::new(MSI_EXEC).arg("/i").arg(file_path).output()?,
-            false => Command::new(file_path)
-                .args([INNO_SILENT_ARG, NSIS_SILENT_ARG])
+            false => Command::cmd()
+                .arg(file_path)
+                .arg(INNO_SILENT_ARG)
+                .arg(NSIS_SILENT_ARG)
                 .output()?,
         };
         Ok(())
