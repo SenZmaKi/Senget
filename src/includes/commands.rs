@@ -398,18 +398,17 @@ pub fn generate_table_string(column_headers: &Vec<String>, rows: &Vec<Vec<String
     let format_row = |row: &Vec<String>| {
         row.iter()
             .enumerate()
-            .map(|(idx, item)| {
+            .fold(String::new(), |acc, (idx, item)| {
                 let max_len = max_length_per_column[idx]; // 4 spaces
                 let delimeter = if idx == last_idx { "\n" } else { "    " };
-                format!("{:<max_len$}{}", item, delimeter)
+                format!("{}{:<max_len$}{}", acc, item, delimeter)
             })
-            .collect::<String>()
     };
 
     let header_str = &format_row(column_headers);
     let max_char_count_per_row = (4 * (last_idx)) + max_length_per_column.iter().sum::<usize>();
     let seperator_str = "-".repeat(max_char_count_per_row);
-    let data_str = rows.iter().map(|r| format_row(r)).collect::<String>();
+    let data_str = rows.iter().map(format_row).collect::<String>();
     format!("{}{}\n{}", header_str, seperator_str, data_str)
 }
 

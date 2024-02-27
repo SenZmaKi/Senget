@@ -1,17 +1,24 @@
 //! Contains error handling utility
 
+// I still don't understand the proper way to handle errors this language
+
+use core::panic;
 use mslnk::MSLinkError;
 use reqwest;
-use zip::result::ZipError;
 use std::fmt;
-use std::fmt::Display;
 use std::io;
+use zip::result::ZipError;
 
 pub struct ContentLengthError;
 
 impl fmt::Debug for ContentLengthError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ContentLength: Invalid content length")
+    }
+}
+impl fmt::Display for ContentLengthError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 pub struct ExportFileNotFoundError;
@@ -42,6 +49,12 @@ pub struct NetworkError;
 impl fmt::Debug for NetworkError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Check your internet connection and try again.")
+    }
+}
+
+impl fmt::Display for NetworkError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -102,22 +115,23 @@ impl fmt::Debug for NoExecutableError {
 pub enum SengetErrors {
     RequestError(reqwest::Error),
     IoError(io::Error),
+    ContentLengthError(ContentLengthError),
+    NetworkError(NetworkError),
+    SerdeError(serde_json::error::Error),
+    MSLinkError(MSLinkError),
+    ZipError(ZipError),
+
     PrivilegeError(PrivilegeError),
     NoExecutableError(NoExecutableError),
-    VersionAlreadyInstalledError(VersionAlreadyInstalledError),
-    AlreadyUptoDateError(AlreadyUptoDateError),
-    FailedToUninstallError(FailedToUninstallError),
     NoInstalledPackageError(NoInstalledPackageError),
+    FailedToUninstallError(FailedToUninstallError),
+    AlreadyUptoDateError(AlreadyUptoDateError),
+    VersionAlreadyInstalledError(VersionAlreadyInstalledError),
     NoPackageError(NoPackageError),
     NoValidDistError(NoValidDistError),
     PackageAlreadyInstalledError(PackageAlreadyInstalledError),
-    ContentLengthError(ContentLengthError),
-    NetworkError(NetworkError),
     NoExeFound(NoExeFoundInZipError),
-    SerdeError(serde_json::error::Error),
     ExportFileNotFoundError(ExportFileNotFoundError),
-    MSLinkError(MSLinkError),
-    ZipError(ZipError)
 }
 
 impl fmt::Debug for SengetErrors {
@@ -144,14 +158,12 @@ impl fmt::Debug for SengetErrors {
         }
     }
 }
-impl Display for SengetErrors {
+impl fmt::Display for SengetErrors {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
-impl std::error::Error for SengetErrors {
-
-}
+impl std::error::Error for SengetErrors {}
 impl From<reqwest::Error> for SengetErrors {
     fn from(error: reqwest::Error) -> Self {
         SengetErrors::RequestError(error)
@@ -207,7 +219,6 @@ impl From<AlreadyUptoDateError> for SengetErrors {
     }
 }
 
-
 impl From<NoInstalledPackageError> for SengetErrors {
     fn from(err: NoInstalledPackageError) -> Self {
         SengetErrors::NoInstalledPackageError(err)
@@ -253,19 +264,37 @@ impl From<NoExeFoundInZipError> for SengetErrors {
         SengetErrors::NoExeFound(err)
     }
 }
+
 pub fn check_for_other_errors(err: SengetErrors) -> SengetErrors {
-    let str_error = format!("{:?}", err);
-    if str_error.contains("The requested operation requires elevation.") {
-        return PrivilegeError.into(); // Happens when they disconnect for a decent while during an ongoing download
-    } else if str_error.contains("No such host is known.") || str_error.contains("IncompleteBody") {
-        return NetworkError.into();
+    match err {
+        SengetErrors::IoError(io_err) => {
+            if let io::ErrorKind::PermissionDenied = io_err.kind() {
+                return PrivilegeError.into();
+            }
+            io_err.into()
+        }
+        SengetErrors::RequestError(req_err) => {
+            let str_error = req_err.to_string();
+            if str_error.contains("No such host is known.") || str_error.contains("IncompleteBody")
+            {
+                return NetworkError.into();
+            }
+            req_err.into()
+        }
+        _ => err,
     }
-    err
 }
 
 pub fn print_error(err: SengetErrors) {
     let err = check_for_other_errors(err);
-    eprintln!("\n{:?}", err);
+    match err {
+        SengetErrors::RequestError(err) => panic!("{}", err),
+        SengetErrors::IoError(err) => panic!("{}", err),
+        SengetErrors::ContentLengthError(err) => panic!("{}", err),
+        SengetErrors::NetworkError(err) => panic!("{}", err),
+        SengetErrors::SerdeError(err) => panic!("{}", err),
+        SengetErrors::MSLinkError(err) => panic!("{}", err),
+        SengetErrors::ZipError(err) => panic!("{}", err),
+        _ => eprintln!("{:?}", err),
+    }
 }
-
-

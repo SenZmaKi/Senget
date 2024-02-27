@@ -414,7 +414,7 @@ pub struct InstallerDist {
     pub package_info: PackageInfo,
 }
 impl InstallerDist {
-    const UNINSTALL_KEY_STR: &str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
+    const UNINSTALL_KEY_STR: &'static str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
     pub async fn download(
         &self,
         dists_folder_path: &Path,
