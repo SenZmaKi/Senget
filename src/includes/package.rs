@@ -4,7 +4,7 @@ use crate::includes::{
     dist::{Dist, DistType, StartmenuFolders},
     error::SengetErrors,
     senget_manager::env::remove_package_folder_from_senget_env_var,
-    utils::{PathStr, MSI_EXEC},
+    utils::PathStr,
 };
 use crate::{dist::InstallInfo, github::api::Repo};
 use core::fmt;
@@ -15,6 +15,8 @@ use std::fs;
 use std::path::Path;
 use std::{io, process::Command};
 use winreg::RegKey;
+
+pub const MSI_EXEC: &str = "MsiExec.exe";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportedPackage {

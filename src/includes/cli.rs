@@ -8,7 +8,7 @@ use crate::includes::{
     database::PackageDatabase,
     dist::DistType,
     error::SengetErrors,
-    utils::{DESCRIPTION, EXPORTED_PACKAGES_FILENAME, VERSION},
+    utils::{DESCRIPTION, EXPORTED_PACKAGES_FILENAME, NAME, VERSION},
 };
 use clap::builder::EnumValueParser;
 use clap::{Arg, ArgAction, ArgMatches, Command};
@@ -91,11 +91,8 @@ pub fn parse_commands() -> Command {
         .arg(&dist_type_arg)
         .arg(folder_path_arg(" to download the distributable into"));
     let export_command = Command::new("export")
-        .about(format!(
-            "Export a list of installed packages to a file named {}",
-            EXPORTED_PACKAGES_FILENAME
-        ))
-        .arg(folder_path_arg(" to save the export file into"));
+        .about("Export a list of installed packages")
+        .arg(path_arg("to save the packages to").default_value(EXPORTED_PACKAGES_FILENAME));
     let import_command = Command::new("import")
         .about("Import a list of packages by installing")
         .arg(
@@ -120,7 +117,7 @@ pub fn parse_commands() -> Command {
                 .default_value("latest"),
         );
 
-    Command::new("Senget")
+    Command::new(NAME)
         .version(VERSION)
         .about(DESCRIPTION)
         .subcommand(show_command)
@@ -152,6 +149,7 @@ fn get_version(arg_match: &ArgMatches) -> &str {
 fn get_path(arg_match: &ArgMatches) -> PathBuf {
     PathBuf::from(get_string_value("path", arg_match))
 }
+
 fn get_dist_type(arg_match: &ArgMatches) -> Option<&DistType> {
     arg_match.get_one("dist")
 }

@@ -15,9 +15,9 @@ use includes::{
             check_if_senget_update_available, generate_senget_package, setup_senget_package,
         },
     },
-    utils::{root_dir, PathStr, DESCRIPTION, VERSION},
+    utils::{root_dir, PathStr},
 };
-use std::sync::Arc;
+use std::{sync::Arc, env};
 
 
 
@@ -35,8 +35,8 @@ fn init() -> Result<
     let statics = Statics::new(&root)?;
     let db = PackageDatabase::new(&root)?;
     let senget_package =
-        generate_senget_package(root.clone(), VERSION.to_owned(), DESCRIPTION.to_owned())?;
-    setup_senget_package(&db, &senget_package, VERSION)?;
+        generate_senget_package(root.clone())?;
+    setup_senget_package(&db, &senget_package)?;
     setup_senget_packages_path_env_var(
         &senget_package
             .install_info
@@ -74,6 +74,8 @@ async fn run() -> Result<(), SengetErrors> {
 
 #[tokio::main]
 async fn main() {
+    // To show full error log on panics
+    env::set_var("RUST_BACKTRACE", "1");
     if let Err(err) = run().await {
         print_error(err)
     }

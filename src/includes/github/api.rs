@@ -37,7 +37,7 @@ impl fmt::Display for Repo {
 
         write!(
             f,
-            "Name: {}\nAuthor: {}\nDescription: {}\nRepository Url: {}\nPrimary Language: {}\nLicense: {}",
+            "Name: {}\nAuthor: {}\nDescription: {}\nRepository: {}\nPrimary Language: {}\nLicense: {}",
             name, author, description, url, language, license
         )
     }

@@ -10,13 +10,13 @@ use std::{
     process::Command,
 };
 
-pub const EXPORTED_PACKAGES_FILENAME: &str = "senget-packages.json";
-pub const VERSION: &str = "0.1.0";
-pub const DESCRIPTION: &str = "Blazingly fast Windows package manager";
-pub const MSI_EXEC: &str = "MsiExec.exe";
+pub const NAME: &str = env!("CARGO_PKG_NAME");
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
+pub const REPO_URL: &str = env!("CARGO_PKG_REPOSITORY");
 pub const IBYTES_TO_MBS_DIVISOR: u64 = 1024 * 1024;
-// NOTE: set to false on production
-pub const DEBUG: bool = true;
+pub const DEBUG: bool = cfg!(debug_assertions);
+pub const EXPORTED_PACKAGES_FILENAME: &str = "senget-packages.json";
 
 pub trait Cmd {
     fn cmd() -> Command;

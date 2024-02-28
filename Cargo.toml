@@ -2,7 +2,9 @@
 name = "senget"
 version = "0.1.0"
 edition = "2021"
-description = "Blazingly fast Windows package manager"
+description = "A blazingly fast🚀 Windows package manager for Github hosted packages"
+repository = "https://github.com/SenZmaKi/Senget"
+
 
 [build-dependencies]
 winres = "0.1"

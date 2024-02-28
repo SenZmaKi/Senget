@@ -14,7 +14,7 @@ use crate::includes::{
     package::ExportedPackage,
     package::Package,
     utils::{loading_animation, setup_client, FolderItems, PathStr},
-    utils::{DEBUG, EXPORTED_PACKAGES_FILENAME, IBYTES_TO_MBS_DIVISOR},
+    utils::{DEBUG, IBYTES_TO_MBS_DIVISOR},
 };
 use regex::Regex;
 use reqwest::Client;
@@ -271,15 +271,24 @@ pub fn uninstall_package(
 ) -> Result<(), SengetErrors> {
     match db.find_package(name)? {
         Some(package) => {
-            let task = || package.uninstall(startmenu_appdata_folder);
-            let uninstalled =
-                loading_animation(format!("Uninstalling {}", package.repo.name), task)?;
-            if uninstalled || force {
-                db.remove_package(&package)?;
-                Ok(println!("Successfully uninstalled {}.", package.repo.name))
-            } else {
-                Err(FailedToUninstallError.into())
+            let task = || -> Result<(), SengetErrors> {
+                if !package.uninstall(startmenu_appdata_folder)? {
+                    return Err(FailedToUninstallError.into());
+                }
+                Ok(())
+            };
+            let success =
+                loading_animation(format!("Uninstalling {}", package.repo.name), task).is_ok();
+            if !(success || force) {
+                return Err(FailedToUninstallError.into());
             }
+            db.remove_package(&package)?;
+            if success {
+                println!("Successfully uninstalled {}.", package.repo.name);
+            } else {
+                println!("Removed {} from package database.", package.repo.name);
+            }
+            Ok(())
         }
         None => Err(NoInstalledPackageError.into()),
     }
@@ -434,7 +443,7 @@ pub async fn search_repos(query: &str, client: &Client) -> Result<(), SengetErro
 }
 
 pub fn export_packages(
-    export_folder_path: &Path,
+    export_file_path: &Path,
     db: &PackageDatabase,
 ) -> Result<(), SengetErrors> {
     let exported_packages: Vec<ExportedPackage> =
@@ -444,7 +453,6 @@ pub fn export_packages(
                 prev.push(p.export());
                 prev
             });
-    let export_file_path = export_folder_path.join(EXPORTED_PACKAGES_FILENAME);
     let json_string = serde_json::to_string_pretty(&exported_packages)?;
     File::create(&export_file_path)?.write_all(json_string.as_bytes())?;
     Ok(println!("Exported at {}", export_file_path.path_str()?))

@@ -6,21 +6,18 @@ use crate::includes::{
     error::SengetErrors,
     github::api::Repo,
     package::Package,
+    utils::{DESCRIPTION, REPO_URL, VERSION},
 };
 use regex::Regex;
 use reqwest::Client;
 use std::{io, path::PathBuf};
 
-pub fn generate_senget_package(
-    root_dir: PathBuf,
-    version: String,
-    description: String,
-) -> Result<Package, io::Error> {
+pub fn generate_senget_package(root_dir: PathBuf) -> Result<Package, io::Error> {
     let repo = Repo::new(
         "Senget".to_owned(),
         "SenZmaKi/Senget".to_owned(),
-        "https://github.com/SenZmaKi/Senget".to_owned(),
-        Some(description),
+        REPO_URL.to_owned(),
+        Some(DESCRIPTION.to_owned()),
         Some("Rust".to_owned()),
         Some("GNU General Public License v3.0".to_owned()),
     );
@@ -34,7 +31,7 @@ pub fn generate_senget_package(
         dist_type: DistType::Installer,
         create_shortcut_file: false,
     };
-    Ok(Package::new(version, repo, install_info))
+    Ok(Package::new(VERSION.to_owned(), repo, install_info))
 }
 
 pub fn setup_senget_package(
@@ -44,11 +41,10 @@ pub fn setup_senget_package(
     // this function is called we use a reference such that we'll only copy it internally incase the
     // aforementioned conditions are met
     senget_package: &Package,
-    version: &str,
 ) -> Result<(), SengetErrors> {
     match db.find_package("Senget")? {
         Some(old_senget_package) => {
-            if old_senget_package.version != version {
+            if old_senget_package.version != VERSION {
                 db.update_package(&old_senget_package, senget_package.clone())?;
             };
         }

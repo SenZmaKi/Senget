@@ -22,12 +22,14 @@ use winreg::{
 };
 use zip::ZipArchive;
 
+use crate::includes::package::MSI_EXEC;
 use crate::includes::utils::Cmd;
 use crate::includes::{
     error::{ContentLengthError, NoExeFoundInZipError, SengetErrors},
     senget_manager::env::add_package_folder_to_senget_env_var,
-    utils::{FilenameLower, FolderItems, MoveDirAll, PathStr, Take, DEBUG, MSI_EXEC},
+    utils::{FilenameLower, FolderItems, MoveDirAll, PathStr, Take, DEBUG},
 };
+
 
 // Running an msi installer that needs admin access silently is problematic since
 // it'll just exit silently without an error if it fails cause of lack of admin access

@@ -88,7 +88,7 @@ impl fmt::Debug for PackageAlreadyInstalledError {
 pub struct FailedToUninstallError;
 impl fmt::Debug for FailedToUninstallError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Auto-uninstallation failed. Manually uninstall the package and use --force flag to delete it from the database.")
+        write!(f, "Auto-uninstallation failed. Manually uninstall the package and use --force flag to delete it from the package database.")
     }
 }
 
