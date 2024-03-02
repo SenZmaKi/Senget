@@ -23,7 +23,7 @@ pub struct ExportedPackage {
     pub full_name: String,
     pub version: String,
     pub preferred_dist_type: DistType,
-    pub create_shorcut_file: bool,
+    pub create_shortcut_file: bool,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,7 +58,7 @@ impl Package {
             full_name: self.repo.full_name.clone(),
             version: self.version.clone(),
             preferred_dist_type: self.install_info.dist_type.clone(),
-            create_shorcut_file: self.install_info.create_shortcut_file,
+            create_shortcut_file: self.install_info.create_shortcut_file,
         }
     }
     pub fn installation_folder_str(&self) -> String {

@@ -75,7 +75,7 @@ async fn run() -> Result<(), SengetErrors> {
 #[tokio::main]
 async fn main() {
     // To show full error log on panics
-    env::set_var("RUST_BACKTRACE", "1");
+    env::set_var("RUST_BACKTRACE", "full");
     if let Err(err) = run().await {
         print_error(err)
     }

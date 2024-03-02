@@ -102,15 +102,26 @@ impl Repo {
         }
     }
 
-    fn purify_exe_name(name: &str) -> String {
-        name.replace(['-', '_', '.'], "")
+    fn fuzz_asset_name(lower_name: &str) -> String {
+        lower_name.replace(['-', '_', '.'], "")
+            // Installer metadata
+            .replace("installer", "")
+            .replace("update", "")
+            .replace("updater", "")
+            .replace("setup", "")
+            .replace("msi", "")
+            // Zip metadata
+            .replace("zip", "")
+            .replace("portable", "")
+            .replace("port", "")
+            // Exe metadata
             .replace("exe", "")
             .replace("windows", "")
             .replace("win", "")
             .replace('x', "")
             .replace("bit", "")
             .replace("amd64", "")
-            .replace("arm", "")
+            .replace("amd", "")
             .replace("i386", "")
             .replace("386", "")
             .replace("86", "")
@@ -118,8 +129,13 @@ impl Repo {
             .replace("32", "")
     }
 
-    fn parse_asset_info(repo_name_lower: &str, asset: &Asset) -> Option<AssetInfo> {
+    fn parse_asset_info(repo_name_lower: &str, asset: Asset) -> Option<AssetInfo> {
         let asset_name_lower = asset.name.to_lowercase();
+        // 32 bit and 64 bit applications work on arm devices but arm applications don't work on
+        // non-arm devices
+        if asset_name_lower.contains("arm") {
+            return None;
+        }
         if !asset_name_lower.contains(repo_name_lower) {
             return None;
         }
@@ -143,12 +159,11 @@ impl Repo {
             } else {
                 DistType::Installer
             };
-            let is_exact_match = !(is_exe_dist
-                && Repo::purify_exe_name(&asset_name_lower)
-                    != Repo::purify_exe_name(repo_name_lower));
+            let is_exact_match =
+                Repo::fuzz_asset_name(&asset_name_lower) == Repo::fuzz_asset_name(repo_name_lower);
             return Some(AssetInfo {
-                file_title: asset.name.clone(),
-                download_url: asset.browser_download_url.clone(),
+                file_title: asset.name,
+                download_url: asset.browser_download_url,
                 dist_type,
                 is_exact_match,
             });
@@ -164,8 +179,6 @@ impl Repo {
     ) -> Option<Dist> {
         match preferred_dist_type {
             None => {
-                // The order in which each installer type is compared is:Zip > Exe > Normal
-                // b compared to a so that sorting is in descending order
                 asset_infos.sort_by(|a, b| b.dist_type.partial_cmp(&a.dist_type).unwrap());
                 // is_exact_match > !is_exact_match, !ai cause default sorting is in ascending so
                 // !ai flips sorting to descending order
@@ -207,7 +220,7 @@ impl Repo {
     ) -> Option<Dist> {
         let repo_name_lower = self.name.to_lowercase();
         let asset_infos: Vec<AssetInfo> = assets
-            .iter()
+            .into_iter()
             .filter_map(|asset| Repo::parse_asset_info(&repo_name_lower, asset))
             .collect();
         if asset_infos.is_empty() {

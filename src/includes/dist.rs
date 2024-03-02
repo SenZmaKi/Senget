@@ -30,7 +30,6 @@ use crate::includes::{
     utils::{FilenameLower, FolderItems, MoveDirAll, PathStr, Take, DEBUG},
 };
 
-
 // Running an msi installer that needs admin access silently is problematic since
 // it'll just exit silently without an error if it fails cause of lack of admin access
 // and there's no way to know that it needs admin access ahead of time
@@ -416,7 +415,8 @@ pub struct InstallerDist {
     pub package_info: PackageInfo,
 }
 impl InstallerDist {
-    const UNINSTALL_KEY_STR: &'static str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
+    const UNINSTALL_KEY_STR: &'static str =
+        "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
     pub async fn download(
         &self,
         dists_folder_path: &Path,

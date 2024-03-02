@@ -88,15 +88,15 @@ pub fn clear_cached_distributables(dists_folder_path: &Path) -> Result<(), Senge
         if !p.is_file() {
             return Ok(prev_size);
         };
-        fs::remove_file(&p)?;
         let s = p.metadata()?.file_size();
+        fs::remove_file(&p)?;
         Ok(prev_size + s)
     };
     let size = dists_folder_path
         .folder_items()?
         .into_iter()
         .try_fold(0, calc_size)?;
-    println!("Cleared {}MBs", size / IBYTES_TO_MBS_DIVISOR);
+    println!("Cleared {} MBs", size / IBYTES_TO_MBS_DIVISOR);
     Ok(())
 }
 pub fn validate_cache_folder_size(dists_folder_path: &Path) -> Result<(), SengetErrors> {
@@ -454,7 +454,7 @@ pub fn export_packages(
                 prev
             });
     let json_string = serde_json::to_string_pretty(&exported_packages)?;
-    File::create(&export_file_path)?.write_all(json_string.as_bytes())?;
+    File::create(export_file_path)?.write_all(json_string.as_bytes())?;
     Ok(println!("Exported at {}", export_file_path.path_str()?))
 }
 
@@ -480,7 +480,7 @@ pub async fn import_packages(
             &p.full_name,
             version,
             &Some(p.preferred_dist_type),
-            p.create_shorcut_file,
+            p.create_shortcut_file,
             db,
             statics,
         )

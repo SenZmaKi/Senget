@@ -21,7 +21,7 @@ impl PackageDatabase {
         let pd = PackageDatabase { db_path };
         if !pd.db_path.is_file() {
             File::create(&pd.db_path)?;
-            pd.update_packages(Vec::new())?;
+            pd.save_packages(Vec::new())?;
         }
         Ok(pd)
     }
@@ -32,8 +32,8 @@ impl PackageDatabase {
         Ok(packages)
     }
 
-    fn update_packages(&self, updated_packages: Vec<Package>) -> Result<(), SengetErrors> {
-        let updated_packages_str = serde_json::to_string_pretty(&updated_packages)?;
+    fn save_packages(&self, packages: Vec<Package>) -> Result<(), SengetErrors> {
+        let updated_packages_str = serde_json::to_string_pretty(&packages)?;
         // Create instead of open with write permissions
         // incase some weirdo decides to delete the file as the program runs
         File::create(&self.db_path)?.write_all(updated_packages_str.as_bytes())?;
@@ -54,7 +54,7 @@ impl PackageDatabase {
     pub fn add_package(&self, package: Package) -> Result<(), SengetErrors> {
         let mut packages = self.fetch_all_packages()?;
         packages.push(package);
-        self.update_packages(packages)
+        self.save_packages(packages)
     }
 
     pub fn update_package(
@@ -65,13 +65,13 @@ impl PackageDatabase {
         let mut packages = self.fetch_all_packages()?;
         let index = self.find_package_index(old_package, &packages).unwrap();
         packages[index] = updated_package;
-        self.update_packages(packages)
+        self.save_packages(packages)
     }
 
     pub fn remove_package(&self, package: &Package) -> Result<(), SengetErrors> {
         let mut packages = self.fetch_all_packages()?;
         let index = self.find_package_index(package, &packages).unwrap();
         packages.remove(index);
-        self.update_packages(packages)
+        self.save_packages(packages)
     }
 }
