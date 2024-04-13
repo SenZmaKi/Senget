@@ -442,10 +442,7 @@ pub async fn search_repos(query: &str, client: &Client) -> Result<(), SengetErro
     ))
 }
 
-pub fn export_packages(
-    export_file_path: &Path,
-    db: &PackageDatabase,
-) -> Result<(), SengetErrors> {
+pub fn export_packages(export_file_path: &Path, db: &PackageDatabase) -> Result<(), SengetErrors> {
     let exported_packages: Vec<ExportedPackage> =
         db.fetch_all_packages()?
             .iter()

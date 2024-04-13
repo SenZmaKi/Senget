@@ -64,6 +64,7 @@ impl FolderItems for Path {
     }
 }
 
+
 pub trait FilenameLower {
     fn filename_lower(&self) -> String;
 }

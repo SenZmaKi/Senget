@@ -89,6 +89,7 @@ pub mod tests {
                 .to_owned(),
             "2.0.9".to_owned(),
             "Senpwai-setup.exe".to_owned(),
+            132,
         );
         InstallerDist { package_info }
     }

@@ -9,18 +9,7 @@ use std::fmt;
 use std::io;
 use zip::result::ZipError;
 
-pub struct ContentLengthError;
 
-impl fmt::Debug for ContentLengthError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ContentLength: Invalid content length")
-    }
-}
-impl fmt::Display for ContentLengthError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
 pub struct ExportFileNotFoundError;
 
 impl fmt::Debug for ExportFileNotFoundError {
@@ -115,7 +104,6 @@ impl fmt::Debug for NoExecutableError {
 pub enum SengetErrors {
     RequestError(reqwest::Error),
     IoError(io::Error),
-    ContentLengthError(ContentLengthError),
     SerdeError(serde_json::error::Error),
     MSLinkError(MSLinkError),
     ZipError(ZipError),
@@ -148,7 +136,6 @@ impl fmt::Debug for SengetErrors {
             SengetErrors::NoPackageError(err) => write!(f, "{:?}", err),
             SengetErrors::NoValidDistError(err) => write!(f, "{:?}", err),
             SengetErrors::PackageAlreadyInstalledError(err) => write!(f, "{:?}", err),
-            SengetErrors::ContentLengthError(err) => write!(f, "{:?}", err),
             SengetErrors::NetworkError(err) => write!(f, "{:?}", err),
             SengetErrors::NoExeFound(err) => write!(f, "{:?}", err),
             SengetErrors::SerdeError(err) => write!(f, "{:?}", err),
@@ -184,11 +171,6 @@ impl From<io::Error> for SengetErrors {
 impl From<ExportFileNotFoundError> for SengetErrors {
     fn from(err: ExportFileNotFoundError) -> Self {
         SengetErrors::ExportFileNotFoundError(err)
-    }
-}
-impl From<ContentLengthError> for SengetErrors {
-    fn from(err: ContentLengthError) -> Self {
-        SengetErrors::ContentLengthError(err)
     }
 }
 impl From<serde_json::Error> for SengetErrors {
@@ -290,7 +272,6 @@ pub fn print_error(err: SengetErrors) {
     match err {
         SengetErrors::RequestError(err) => panic!("{}", err),
         SengetErrors::IoError(err) => panic!("{}", err),
-        SengetErrors::ContentLengthError(err) => panic!("{}", err),
         SengetErrors::SerdeError(err) => panic!("{}", err),
         SengetErrors::MSLinkError(err) => panic!("{}", err),
         SengetErrors::ZipError(err) => panic!("{}", err),

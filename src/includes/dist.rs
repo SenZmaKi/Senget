@@ -25,7 +25,7 @@ use zip::ZipArchive;
 use crate::includes::package::MSI_EXEC;
 use crate::includes::utils::Cmd;
 use crate::includes::{
-    error::{ContentLengthError, NoExeFoundInZipError, SengetErrors},
+    error::{NoExeFoundInZipError, SengetErrors},
     senget_manager::env::add_package_folder_to_senget_env_var,
     utils::{FilenameLower, FolderItems, MoveDirAll, PathStr, Take, DEBUG},
 };
@@ -63,7 +63,6 @@ impl From<clap::builder::Str> for DistType {
     }
 }
 
-/// The type of the distributable
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dist {
     /// Zipped package distributable
@@ -185,6 +184,7 @@ impl Dist {
 pub struct PackageInfo {
     name: String,
     file_title: String,
+    file_size: u64,
     pub download_url: String,
     pub version: String,
 }
@@ -197,14 +197,22 @@ impl PackageInfo {
             DistType::Installer => Dist::Installer(InstallerDist { package_info: self }),
         }
     }
-    pub fn new(name: String, download_url: String, version: String, file_title: String) -> Self {
+    pub fn new(
+        name: String,
+        download_url: String,
+        version: String,
+        file_title: String,
+        file_size: u64,
+    ) -> Self {
         Self {
             name,
             download_url,
             version,
             file_title,
+            file_size,
         }
     }
+
     pub async fn download(
         &self,
         download_folder_path: &Path,
@@ -213,7 +221,7 @@ impl PackageInfo {
         let path = download_folder_path.join(&self.file_title);
         let mut file = File::create(&path)?;
         let mut response = client.get(&self.download_url).send().await?;
-        let progress_bar = ProgressBar::new(response.content_length().ok_or(ContentLengthError)?);
+        let progress_bar = ProgressBar::new(self.file_size);
         progress_bar.set_style(
             ProgressStyle::default_bar()
                 .template("{msg} [{bar:40.green/orange}] {bytes}/{total_bytes} ({eta} left)")

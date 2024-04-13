@@ -1,14 +1,11 @@
-to-do.txt
-winget-packages.txt
-senget-package.txt
 
-/target
-/.vscode
-/packages
-/database
-/distributables
-/test-database
-/test-distributables
-/senget-packages.txt
-/src/includes/github/scraps
-/src/includes/crap.rs
+target/
+.vscode/
+packages/
+database/
+distributables/
+scraps/
+setups/
+
+crap.rs
+.todo

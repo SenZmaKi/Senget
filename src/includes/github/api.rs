@@ -46,6 +46,7 @@ impl fmt::Display for Repo {
 struct AssetInfo {
     pub file_title: String,
     pub download_url: String,
+    pub file_size: i64,
     pub dist_type: DistType,
     pub is_exact_match: bool,
 }
@@ -73,37 +74,37 @@ impl Repo {
         Regex::new(r"(\d+(\.\d+)*)").unwrap()
     }
 
-    async fn get_assets_url_by_version(
+    async fn get_assets_by_version(
         &self,
         version: &str,
         client: &reqwest::Client,
         version_regex: &Regex,
-    ) -> Result<Option<(String, String)>, reqwest::Error> {
+    ) -> Result<Option<(AssetsResponseJson, String)>, reqwest::Error> {
         let url = self.generate_endpoint("releases");
         let releases_response_json: ReleasesResponseJson =
             client.get(url).send().await?.json().await?;
         if releases_response_json.is_empty() {
-            Ok(None)
-        } else {
-            let version = match Repo::parse_version(version, version_regex) {
-                None => return Ok(None),
+            return Ok(None);
+        }
+        let parsed_version = match Repo::parse_version(version, version_regex) {
+            None => return Ok(None),
+            Some(v) => v,
+        };
+        for r in releases_response_json {
+            let curr_ver = match Repo::parse_version(&r.tag_name, version_regex) {
+                None => continue,
                 Some(v) => v,
             };
-            for r in releases_response_json {
-                let curr_ver = match Repo::parse_version(&r.tag_name, version_regex) {
-                    None => continue,
-                    Some(v) => v,
-                };
-                if version == curr_ver {
-                    return Ok(Some((r.assets_url, curr_ver.to_owned())));
-                }
+            if parsed_version == curr_ver {
+                return Ok(Some((r.assets, parsed_version.to_string())));
             }
-            Ok(None)
         }
+        Ok(None)
     }
 
     fn fuzz_asset_name(lower_name: &str) -> String {
-        lower_name.replace(['-', '_', '.'], "")
+        lower_name
+            .replace(['-', '_', '.'], "")
             // Installer metadata
             .replace("installer", "")
             .replace("update", "")
@@ -149,7 +150,7 @@ impl Repo {
         let is_exe_dist = !is_installer_dist && is_exe;
         let is_zip_dist = asset_name_lower.ends_with(".zip")
             && !asset_name_lower.contains("mac") // Mac Os
-            && !asset_name_lower.contains("darwin") // Darwin
+            && !asset_name_lower.contains("darwin") // Mac OS
             && !asset_name_lower.contains("linux"); // Linux
         if is_exe_dist || is_zip_dist || is_installer_dist {
             let dist_type = if is_exe_dist {
@@ -163,6 +164,7 @@ impl Repo {
                 Repo::fuzz_asset_name(&asset_name_lower) == Repo::fuzz_asset_name(repo_name_lower);
             return Some(AssetInfo {
                 file_title: asset.name,
+                file_size: asset.size,
                 download_url: asset.browser_download_url,
                 dist_type,
                 is_exact_match,
@@ -189,6 +191,7 @@ impl Repo {
                     asset_info.download_url,
                     version,
                     asset_info.file_title,
+                    asset_info.file_size as u64,
                 )
                 .fetch_dist(asset_info.dist_type);
                 Some(dist)
@@ -204,6 +207,7 @@ impl Repo {
                             ai.download_url.clone(),
                             version,
                             ai.file_title.clone(),
+                            ai.file_size as u64,
                         );
                         pi.fetch_dist(ai.dist_type.clone())
                     });
@@ -236,14 +240,13 @@ impl Repo {
         version_regex: &Regex,
         preferred_dist_type: &Option<DistType>,
     ) -> Result<Option<Dist>, reqwest::Error> {
-        let (target_assets_url, parsed_version) = match self
-            .get_assets_url_by_version(version, client, version_regex)
+        let (assets, parsed_version) = match self
+            .get_assets_by_version(version, client, version_regex)
             .await?
         {
             None => return Ok(None),
             Some(asset_url_and_version) => asset_url_and_version,
         };
-        let assets = client.get(target_assets_url).send().await?.json().await?;
         Ok(self.parse_assets_for_distributable(assets, parsed_version, preferred_dist_type))
     }
     pub async fn get_latest_dist(
@@ -311,7 +314,7 @@ pub mod tests {
 
     #[tokio::test]
     async fn test_search() {
-        let queries = vec!["Senpwai", "empty-repo", "zohofberibp09u0&_+*"];
+        let queries = ["Senpwai", "empty-repo", "zohofberibp09u0&_+*"];
         for (idx, query) in queries.iter().enumerate() {
             println!("\nResults of Search {}\n", idx + 1);
             let search_results = search(query, &client()).await.expect("Ok(search_results)");
