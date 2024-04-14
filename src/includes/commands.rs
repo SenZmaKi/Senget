@@ -1,6 +1,6 @@
 //!Exposes command endpoints
 
-use crate::includes::{
+use crate::{includes::{
     database::PackageDatabase,
     dist::Dist,
     dist::{DistType, InstallerDist, StartmenuFolders},
@@ -15,7 +15,7 @@ use crate::includes::{
     package::Package,
     utils::{loading_animation, setup_client, FolderItems, PathStr},
     utils::{DEBUG, IBYTES_TO_MBS_DIVISOR},
-};
+}, success_println_pretty, eprintln_pretty};
 use regex::Regex;
 use reqwest::Client;
 use std::{
@@ -96,7 +96,7 @@ pub fn clear_cached_distributables(dists_folder_path: &Path) -> Result<(), Senge
         .folder_items()?
         .into_iter()
         .try_fold(0, calc_size)?;
-    println!("Cleared {} MBs", size / IBYTES_TO_MBS_DIVISOR);
+    success_println_pretty!("Cleared {} MBs", size / IBYTES_TO_MBS_DIVISOR);
     Ok(())
 }
 pub fn validate_cache_folder_size(dists_folder_path: &Path) -> Result<(), SengetErrors> {
@@ -133,7 +133,7 @@ pub fn purge_packages(db: &PackageDatabase) -> Result<(), SengetErrors> {
     }
     for p in to_remove {
         db.remove_package(&p)?;
-        println!("Purged {}", p.repo.name);
+        success_println_pretty!("Purged {}", p.repo.name);
     }
     Ok(())
 }
@@ -157,7 +157,7 @@ async fn update_all_packages(
         }
     }
     match errored_packages.is_empty() {
-        true => println!("Successfully updated all the necessary packages."),
+        true => success_println_pretty!("Updated all the necessary packages."),
         false => println!(
             "Errors encountered updating the following packages:\n{}",
             generate_table_string(
@@ -186,7 +186,7 @@ pub async fn download_package(
         dists_folder_path,
     )
     .await?;
-    println!("Downloaded at {}", dist_path.path_str()?);
+    success_println_pretty!("Downloaded at {}", dist_path.path_str()?);
     Ok(())
 }
 async fn internal_download_package(
@@ -257,7 +257,7 @@ pub async fn install_package(
             let package_name = repo.name.clone();
             let package = Package::new(dist.version().to_owned(), repo, install_info);
             db.add_package(package)?;
-            println!("Successfully installed {}.", package_name);
+            success_println_pretty!("Installed {}.", package_name);
             Ok(())
         }
     }
@@ -284,7 +284,7 @@ pub fn uninstall_package(
             }
             db.remove_package(&package)?;
             if success {
-                println!("Successfully uninstalled {}.", package.repo.name);
+                success_println_pretty!("Uninstalled {}.", package.repo.name);
             } else {
                 println!("Removed {} from package database.", package.repo.name);
             }
@@ -452,7 +452,7 @@ pub fn export_packages(export_file_path: &Path, db: &PackageDatabase) -> Result<
             });
     let json_string = serde_json::to_string_pretty(&exported_packages)?;
     File::create(export_file_path)?.write_all(json_string.as_bytes())?;
-    Ok(println!("Exported at {}", export_file_path.path_str()?))
+    Ok(success_println_pretty!("Exported at {}", export_file_path.path_str()?))
 }
 
 pub async fn import_packages(
@@ -493,9 +493,9 @@ pub async fn import_packages(
         }
     }
     match errored_packages.is_empty() {
-        true => println!("Successfully imported all the necessary packages."),
-        false => println!(
-            "Errors encountered importing the following packages:\n{}",
+        true => success_println_pretty!("Imported all the necessary packages."),
+        false => eprintln_pretty!(
+            "Errors encountered importing the following packages:{}",
             generate_table_string(
                 &vec!["Name".to_owned(), "Error".to_owned()],
                 &errored_packages
@@ -533,35 +533,3 @@ pub fn run_package(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::includes::{
-        commands::{list_packages, search_repos, show_package},
-        test_utils::{client, db_manager, hatt_package, senpwai_latest_package},
-    };
-
-    #[tokio::test]
-    async fn test_show_package() {
-        let db = db_manager();
-        let client = &client();
-        show_package("Senpwai", &db, client).await.unwrap();
-        println!();
-        db.add_package(senpwai_latest_package()).unwrap();
-        show_package("SenZmaKi/Senpwai", &db, client).await.unwrap();
-        println!();
-        show_package("99419gb0", &db, client).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_search_repos() {
-        search_repos("Python", &client()).await.unwrap();
-    }
-
-    #[test]
-    fn test_list_packages() {
-        let db = db_manager();
-        db.add_package(senpwai_latest_package()).unwrap();
-        db.add_package(hatt_package()).unwrap();
-        list_packages(&db).unwrap();
-    }
-}

@@ -9,6 +9,8 @@ use std::fmt;
 use std::io;
 use zip::result::ZipError;
 
+use crate::eprintln_pretty;
+
 
 pub struct ExportFileNotFoundError;
 
@@ -275,6 +277,6 @@ pub fn print_error(err: SengetErrors) {
         SengetErrors::SerdeError(err) => panic!("{}", err),
         SengetErrors::MSLinkError(err) => panic!("{}", err),
         SengetErrors::ZipError(err) => panic!("{}", err),
-        _ => eprintln!("{:?}", err),
+        _ => eprintln_pretty!("{}", err),
     }
 }

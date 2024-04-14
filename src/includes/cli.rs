@@ -1,5 +1,5 @@
 //!Parses passed commands and arguments
-use crate::includes::{
+use crate::{includes::{
     commands::{
         clear_cached_distributables, download_package, export_packages, import_packages,
         install_package, list_packages, purge_packages, run_package, search_repos, show_package,
@@ -9,7 +9,7 @@ use crate::includes::{
     dist::DistType,
     error::SengetErrors,
     utils::{DESCRIPTION, EXPORTED_PACKAGES_FILENAME, NAME, VERSION},
-};
+}, eprintln_pretty};
 use clap::builder::EnumValueParser;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use std::path::PathBuf;
@@ -224,7 +224,7 @@ pub async fn match_commands(
         }
 
         // We will never reach here cause clap handles invalid commands
-        _ => Ok(eprintln!(
+        _ => Ok(eprintln_pretty!(
             "Invalid command. Use --help for usage information."
         )),
     }

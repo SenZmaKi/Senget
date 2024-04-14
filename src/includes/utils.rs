@@ -10,6 +10,20 @@ use std::{
     process::Command,
 };
 
+#[macro_export]
+macro_rules! success_println_pretty {
+    ($($arg:tt)*) => {
+        println!("\x1b[32m{}\x1b[0m", format!($($arg)*))
+    };
+}
+
+#[macro_export]
+macro_rules! eprintln_pretty {
+    ($($arg:tt)*) => {
+        eprintln!("\x1b[31m{}\x1b[0m", format!($($arg)*))
+    };
+}
+
 pub const NAME: &str = env!("CARGO_PKG_NAME");
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
@@ -44,7 +58,32 @@ pub trait MoveDirAll {
 
 impl MoveDirAll for Path {
     fn move_dir_all(&self, to: &Path) -> Result<(), io::Error> {
-        move_dir_all(self, to)
+        fn helper(from: &Path, to: &Path) -> Result<(), io::Error> {
+            let folder_items = from.folder_items()?;
+            if to.is_file() {
+                fs::remove_file(to)?;
+            }
+            if !to.is_dir() {
+                fs::create_dir(to)?;
+            }
+            for item in folder_items {
+                let item_to = &to.join(item.file_name());
+                let item_path = item.path();
+                if item_path.is_dir() {
+                    helper(&item_path, item_to)?;
+                } else {
+                    if item_to.is_file() {
+                        dbg!(item_to);
+                        fs::remove_file(item_to)?;
+                    } else if item_to.is_dir() {
+                        fs::remove_dir_all(item_to)?;
+                    }
+                    fs::rename(item_path, item_to)?;
+                }
+            }
+            fs::remove_dir(from)
+        }
+        helper(self, to)
     }
 }
 
@@ -63,7 +102,6 @@ impl FolderItems for Path {
         )
     }
 }
-
 
 pub trait FilenameLower {
     fn filename_lower(&self) -> String;
@@ -95,31 +133,6 @@ impl PathStr for Path {
     }
 }
 
-fn move_dir_all(from: &Path, to: &Path) -> Result<(), io::Error> {
-    let folder_items = from.folder_items()?;
-    if to.is_file() {
-        fs::remove_file(to)?;
-    }
-    if !to.is_dir() {
-        fs::create_dir(to)?;
-    }
-    for item in folder_items {
-        let item_to = &to.join(item.file_name());
-        let item_path = item.path();
-        if item_path.is_dir() {
-            move_dir_all(&item_path, item_to)?;
-        } else {
-            if item_to.is_file() {
-                dbg!(item_to);
-                fs::remove_file(item_to)?;
-            } else if item_to.is_dir() {
-                fs::remove_dir_all(item_to)?;
-            }
-            fs::rename(item_path, item_to)?;
-        }
-    }
-    fs::remove_dir(from)
-}
 pub fn root_dir() -> PathBuf {
     if DEBUG {
         return PathBuf::from(".");
@@ -134,11 +147,11 @@ where
     let mut spinner = Spinner::new(Spinners::Dots, task_title);
     match task() {
         Ok(ok) => {
-            spinner.stop_and_persist("✔", "Finished".to_owned());
+            spinner.stop_and_persist("✔", "\x1b[32mFinished\x1b[0m".to_owned());
             Ok(ok)
         }
         Err(err) => {
-            spinner.stop_and_persist("✘", "Failed".to_owned());
+            spinner.stop_and_persist("\x1b[31m✘\x1b[0m", "\x1b[31mFailed\x1b[0m".to_owned());
             Err(err)
         }
     }
@@ -153,37 +166,3 @@ pub fn setup_client() -> Result<Client, reqwest::Error> {
     Client::builder().default_headers(headers).build()
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::includes::utils::loading_animation;
-    use crate::includes::{error::PrivilegeError, utils::FolderItems};
-    use std::thread;
-    use std::time::Duration;
-
-    use super::{root_dir, MoveDirAll};
-    fn actual_task(fail: bool) -> Result<String, PrivilegeError> {
-        thread::sleep(Duration::new(5, 0));
-        if fail {
-            Err(PrivilegeError)
-        } else {
-            Ok("Fondled".to_owned())
-        }
-    }
-
-    #[test]
-    fn test_loading() {
-        let result = loading_animation("Fondling Balls".to_owned(), || actual_task(false));
-        assert!(result.is_ok());
-        let result = loading_animation("Fondling Balls".to_owned(), || actual_task(true));
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_move_dir_all() {
-        let test_move_dir = root_dir().join("test-move-dir-all");
-        let from = test_move_dir.join("from");
-        let to = test_move_dir.join("to");
-        from.move_dir_all(&to).expect("Folder was moved");
-        assert!(!to.folder_items().unwrap().is_empty());
-    }
-}

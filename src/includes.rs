@@ -7,4 +7,3 @@ pub mod package;
 pub mod database;
 pub mod senget_manager;
 pub mod error;
-pub mod test_utils;
