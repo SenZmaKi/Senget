@@ -10,9 +10,9 @@ use crate::includes::{
 };
 use regex::Regex;
 use reqwest::Client;
-use std::{io, path::PathBuf};
+use std::{env, io};
 
-pub fn generate_senget_package(config_dir: PathBuf) -> Result<Package, io::Error> {
+pub fn generate_senget_package() -> Result<Package, io::Error> {
     let repo = Repo::new(
         "Senget".to_owned(),
         "SenZmaKi/Senget".to_owned(),
@@ -21,9 +21,12 @@ pub fn generate_senget_package(config_dir: PathBuf) -> Result<Package, io::Error
         Some("Rust".to_owned()),
         Some("GNU General Public License v3.0".to_owned()),
     );
-    let executable_path = Some(config_dir.join("senget.exe"));
-    let uninstall_command = InstallerDist::fetch_uninstall_command_from_executable(&config_dir)?;
-    let installation_folder = Some(config_dir);
+    let some_executable_path = env::current_exe().unwrap();
+    let some_installation_folder = some_executable_path.parent().unwrap().to_path_buf();
+    let uninstall_command =
+        InstallerDist::fetch_uninstall_command_from_executable(&some_installation_folder)?;
+    let executable_path = Some(some_executable_path);
+    let installation_folder = Some(some_installation_folder);
     let install_info = InstallInfo {
         executable_path,
         installation_folder,
@@ -38,7 +41,7 @@ pub fn setup_senget_package(
     db: &PackageDatabase,
     // The chance of the package being outdated or for the current execution to be the first run are way
     // lower than for this to be a normal run so instead of needlessly copying senget_package every time
-    // this function is called we use a reference such that we'll only copy it internally incase the
+    // this function is called we use a reference such that we'll only conpy it internally incase the
     // aforementioned conditions are met
     senget_package: &Package,
 ) -> Result<(), SengetErrors> {

@@ -65,7 +65,7 @@ pub fn parse_commands() -> Command {
         .about("Show information about a package")
         .arg(&name_arg);
     let search_command = Command::new("search")
-        .about("Search and list packages that match the specified name")
+        .about("Search on github and list packages that match the specified name")
         .arg(&name_arg);
     let uninstall_command = Command::new("uninstall")
         .about("Uninstall a package")
@@ -79,7 +79,7 @@ pub fn parse_commands() -> Command {
         .arg(&version_arg)
         .arg(&dist_type_arg)
         .arg(flag_arg(
-            "Don't create a startmenu shortcut file after installing, only takes effect in exe and zip distributables",
+            "Don't create a startmenu shortcut file after installing, only works in exe and zip distributables",
             "no-shortcut",
             'n',
         ));

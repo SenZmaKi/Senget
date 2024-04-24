@@ -181,9 +181,8 @@ impl Repo {
     ) -> Option<Dist> {
         match preferred_dist_type {
             None => {
+                asset_infos.sort_by_key(|a| !a.file_title.contains("win"));
                 asset_infos.sort_by(|a, b| b.dist_type.partial_cmp(&a.dist_type).unwrap());
-                // is_exact_match > !is_exact_match, !ai cause default sorting is in ascending so
-                // !ai flips sorting to descending order
                 asset_infos.sort_by_key(|ai| !ai.is_exact_match);
                 let asset_info = asset_infos.take(0).unwrap();
                 let dist = PackageInfo::new(

@@ -35,7 +35,7 @@ fn init() -> Result<
     let statics = Statics::new(&config_path)?;
     let db = PackageDatabase::new(&config_path)?;
     let senget_package =
-        generate_senget_package(config_path.clone())?;
+        generate_senget_package()?;
     setup_senget_package(&db, &senget_package)?;
     setup_senget_packages_path_env_var(
         &senget_package
