@@ -15,7 +15,7 @@ use includes::{
             check_if_senget_update_available, generate_senget_package, setup_senget_package,
         },
     },
-    utils::{root_dir, PathStr},
+    utils::{config_dir, PathStr},
 };
 use std::{sync::Arc, env};
 
@@ -31,11 +31,11 @@ fn init() -> Result<
     SengetErrors,
 > {
     let commands = cli::parse_commands();
-    let root = root_dir();
-    let statics = Statics::new(&root)?;
-    let db = PackageDatabase::new(&root)?;
+    let config_path = config_dir();
+    let statics = Statics::new(&config_path)?;
+    let db = PackageDatabase::new(&config_path)?;
     let senget_package =
-        generate_senget_package(root.clone())?;
+        generate_senget_package(config_path.clone())?;
     setup_senget_package(&db, &senget_package)?;
     setup_senget_packages_path_env_var(
         &senget_package

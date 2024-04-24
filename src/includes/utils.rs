@@ -133,11 +133,16 @@ impl PathStr for Path {
     }
 }
 
-pub fn root_dir() -> PathBuf {
+pub fn config_dir() -> PathBuf {
     if DEBUG {
         return PathBuf::from(".");
-    };
-    env::current_exe().unwrap().parent().unwrap().to_owned()
+    }
+    let localappdata = env::var("LOCALAPPDATA").unwrap();
+    let config_path = PathBuf::from(localappdata).join("Senget");
+    if !config_path.is_dir() {
+        fs::create_dir(&config_path).unwrap()
+    }
+    config_path
 }
 
 pub fn loading_animation<T, E, F>(task_title: String, task: F) -> Result<T, E>
@@ -151,7 +156,7 @@ where
             Ok(ok)
         }
         Err(err) => {
-            spinner.stop_and_persist("\x1b[31m✘\x1b[0m", "\x1b[31mFailed\x1b[0m".to_owned());
+            spinner.stop_and_persist("x", "\x1b[31mFailed\x1b[0m".to_owned());
             Err(err)
         }
     }
@@ -165,4 +170,3 @@ pub fn setup_client() -> Result<Client, reqwest::Error> {
     );
     Client::builder().default_headers(headers).build()
 }
-

@@ -37,7 +37,6 @@ use crate::includes::{
 const INNO_SILENT_ARG: &str = "/VERYSILENT";
 const NSIS_SILENT_ARG: &str = "/S";
 const STARTMENU_FOLDER_ENDPOINT: &str = "\\Microsoft\\Windows\\Start Menu\\Programs";
-const PROGRAMS_FOLDER: &str = "Local\\Programs";
 
 pub struct StartmenuFolders {
     pub appdata: PathBuf,
@@ -157,26 +156,20 @@ impl Dist {
         Ok(install_info)
     }
 
-    fn generate_path_from_root(name: &str, root_dir: &Path) -> Result<PathBuf, io::Error> {
-        let path = root_dir.join(name);
+    fn generate_path_from_config(name: &str, config_dir: &Path) -> Result<PathBuf, io::Error> {
+        let path = config_dir.join(name);
         if !path.is_dir() {
             fs::create_dir(&path)?;
         }
         Ok(path)
     }
 
-    pub fn generate_dists_folder_path(root_dir: &Path) -> Result<PathBuf, io::Error> {
-        Self::generate_path_from_root("distributables", root_dir)
+    pub fn generate_dists_folder_path(config_dir: &Path) -> Result<PathBuf, io::Error> {
+        Self::generate_path_from_config("distributables", config_dir)
     }
 
-    pub fn generate_packages_folder_path(
-        root_dir: &Path,
-        appdata_startmenu_folder: &Path,
-    ) -> Result<PathBuf, io::Error> {
-        if DEBUG {
-            return Self::generate_path_from_root("packages", root_dir);
-        }
-        Ok(appdata_startmenu_folder.join(PROGRAMS_FOLDER))
+    pub fn generate_packages_folder_path(config_dir: &Path) -> Result<PathBuf, io::Error> {
+        Self::generate_path_from_config("packages", config_dir)
     }
 }
 
@@ -687,4 +680,3 @@ pub struct InstallInfo {
     pub dist_type: DistType,
     pub create_shortcut_file: bool,
 }
-

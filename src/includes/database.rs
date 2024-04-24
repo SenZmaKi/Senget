@@ -12,8 +12,8 @@ pub struct PackageDatabase {
 }
 
 impl PackageDatabase {
-    pub fn new(root_dir: &Path) -> Result<PackageDatabase, SengetErrors> {
-        let db_folder = root_dir.join("database");
+    pub fn new(config_dir: &Path) -> Result<PackageDatabase, SengetErrors> {
+        let db_folder = config_dir.join("database");
         if !db_folder.is_dir() {
             fs::create_dir(&db_folder)?;
         }

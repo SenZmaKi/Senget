@@ -38,12 +38,12 @@ pub struct Statics {
 }
 
 impl Statics {
-    pub fn new(root_dir: &Path) -> Result<Statics, SengetErrors> {
+    pub fn new(config_dir: &Path) -> Result<Statics, SengetErrors> {
         let client = setup_client()?;
-        let dists_folder_path = Dist::generate_dists_folder_path(root_dir)?;
+        let dists_folder_path = Dist::generate_dists_folder_path(config_dir)?;
         let startmenu_folders = InstallerDist::generate_startmenu_paths();
         let packages_folder_path =
-            Dist::generate_packages_folder_path(root_dir, &startmenu_folders.appdata)?;
+            Dist::generate_packages_folder_path(config_dir)?;
         let user_uninstall_reg_key = InstallerDist::generate_user_uninstall_reg_key()?;
         let machine_uninstall_reg_key = InstallerDist::generate_machine_uninstall_reg_key()?;
         let version_regex = github::api::Repo::generate_version_regex();

@@ -12,7 +12,7 @@ use regex::Regex;
 use reqwest::Client;
 use std::{io, path::PathBuf};
 
-pub fn generate_senget_package(root_dir: PathBuf) -> Result<Package, io::Error> {
+pub fn generate_senget_package(config_dir: PathBuf) -> Result<Package, io::Error> {
     let repo = Repo::new(
         "Senget".to_owned(),
         "SenZmaKi/Senget".to_owned(),
@@ -21,9 +21,9 @@ pub fn generate_senget_package(root_dir: PathBuf) -> Result<Package, io::Error> 
         Some("Rust".to_owned()),
         Some("GNU General Public License v3.0".to_owned()),
     );
-    let executable_path = Some(root_dir.join("senget.exe"));
-    let uninstall_command = InstallerDist::fetch_uninstall_command_from_executable(&root_dir)?;
-    let installation_folder = Some(root_dir);
+    let executable_path = Some(config_dir.join("senget.exe"));
+    let uninstall_command = InstallerDist::fetch_uninstall_command_from_executable(&config_dir)?;
+    let installation_folder = Some(config_dir);
     let install_info = InstallInfo {
         executable_path,
         installation_folder,
